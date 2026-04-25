@@ -1,0 +1,72 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/test-results
+/playwright-report
+/playwright/.cache
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (local only — committed shape lives in .env.example)
+.env*
+!.env.example
+
+# vercel (we don't deploy to vercel but keep the ignore)
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# drizzle — keep generated migrations, ignore introspection scratch
+/drizzle/.snapshots/
+/drizzle/meta/_journal.json.bak
+
+# storage
+/storage/exports/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# ---------- Private — agent instructions and LLM prompts ----------
+# These files contain the agent context, prompt engineering, and
+# step-by-step plan that drive Cairn's behavior. Kept out of git so
+# they don't leak via the public history. They still exist locally —
+# Claude Code reads them on disk at session start, and the runtime
+# loads /prompts/*.md when the app boots. See note in README on
+# deploying with gitignored prompts.
+AGENTS.md
+CLAUDE.md
+KICKOFF-PROMPT.md
+/prompts/
+/docs/plan.md

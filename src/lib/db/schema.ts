@@ -38,6 +38,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/mysql-core"
 import { relations } from "drizzle-orm"
+import type { AdapterAccountType } from "next-auth/adapters"
 
 /* ------------------------------------------------------------------ */
 /* Auth.js v5 — managed tables (do not rename)                        */
@@ -62,18 +63,20 @@ export const accounts = mysqlTable(
     userId: varchar("user_id", { length: 255 })
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    type: varchar("type", { length: 64 }).notNull(),
+    type: varchar("type", { length: 64 }).$type<AdapterAccountType>().notNull(),
     provider: varchar("provider", { length: 64 }).notNull(),
     providerAccountId: varchar("provider_account_id", {
       length: 255,
     }).notNull(),
-    refreshToken: text("refresh_token"),
-    accessToken: text("access_token"),
-    expiresAt: int("expires_at"),
-    tokenType: varchar("token_type", { length: 64 }),
+    // snake_case TS field names below match what @auth/drizzle-adapter
+    // queries by; DB columns stay snake_case as well — no migration delta.
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: int("expires_at"),
+    token_type: varchar("token_type", { length: 64 }),
     scope: varchar("scope", { length: 255 }),
-    idToken: text("id_token"),
-    sessionState: varchar("session_state", { length: 255 }),
+    id_token: text("id_token"),
+    session_state: varchar("session_state", { length: 255 }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.provider, t.providerAccountId] }),

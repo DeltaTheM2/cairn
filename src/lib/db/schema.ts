@@ -64,7 +64,9 @@ export const accounts = mysqlTable(
       .references(() => users.id, { onDelete: "cascade" }),
     type: varchar("type", { length: 64 }).notNull(),
     provider: varchar("provider", { length: 64 }).notNull(),
-    providerAccountId: varchar("provider_account_id", { length: 255 }).notNull(),
+    providerAccountId: varchar("provider_account_id", {
+      length: 255,
+    }).notNull(),
     refreshToken: text("refresh_token"),
     accessToken: text("access_token"),
     expiresAt: int("expires_at"),
@@ -76,7 +78,7 @@ export const accounts = mysqlTable(
   (t) => ({
     pk: primaryKey({ columns: [t.provider, t.providerAccountId] }),
     userIdx: index("accounts_user_idx").on(t.userId),
-  })
+  }),
 )
 
 export const sessions = mysqlTable("sessions", {
@@ -96,7 +98,7 @@ export const verificationTokens = mysqlTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.identifier, t.token] }),
-  })
+  }),
 )
 
 /* ------------------------------------------------------------------ */
@@ -149,7 +151,7 @@ export const projects = mysqlTable(
   (t) => ({
     ownerIdx: index("projects_owner_idx").on(t.ownerId),
     statusIdx: index("projects_status_idx").on(t.status),
-  })
+  }),
 )
 
 export const documentInstances = mysqlTable(
@@ -163,8 +165,9 @@ export const documentInstances = mysqlTable(
       .references(() => projects.id, { onDelete: "restrict" }),
     docType: varchar("doc_type", { length: 32 }).notNull(),
     name: varchar("name", { length: 255 }).notNull(),
-    questionBankVersion: varchar("question_bank_version", { length: 16 })
-      .notNull(),
+    questionBankVersion: varchar("question_bank_version", {
+      length: 16,
+    }).notNull(),
     status: mysqlEnum("status", [
       "draft",
       "in_progress",
@@ -190,7 +193,7 @@ export const documentInstances = mysqlTable(
     projectIdx: index("doc_instances_project_idx").on(t.projectId),
     typeIdx: index("doc_instances_type_idx").on(t.docType),
     statusIdx: index("doc_instances_status_idx").on(t.status),
-  })
+  }),
 )
 
 export const sections = mysqlTable(
@@ -221,10 +224,10 @@ export const sections = mysqlTable(
   (t) => ({
     docKeyUnique: uniqueIndex("sections_doc_key_unique").on(
       t.documentInstanceId,
-      t.sectionKey
+      t.sectionKey,
     ),
     docIdx: index("sections_doc_idx").on(t.documentInstanceId),
-  })
+  }),
 )
 
 export type JudgeFeedback = {
@@ -283,11 +286,11 @@ export const answers = mysqlTable(
   (t) => ({
     sectionKeyUnique: uniqueIndex("answers_section_key_unique").on(
       t.sectionId,
-      t.questionKey
+      t.questionKey,
     ),
     sectionIdx: index("answers_section_idx").on(t.sectionId),
     softWarnIdx: index("answers_soft_warn_idx").on(t.isSoftWarned),
-  })
+  }),
 )
 
 export const documentSnapshots = mysqlTable(
@@ -318,7 +321,7 @@ export const documentSnapshots = mysqlTable(
   (t) => ({
     docIdx: index("snapshots_doc_idx").on(t.documentInstanceId),
     branchIdx: index("snapshots_branch_idx").on(t.branchName),
-  })
+  }),
 )
 
 export const documentExports = mysqlTable(
@@ -342,7 +345,7 @@ export const documentExports = mysqlTable(
   },
   (t) => ({
     docIdx: index("exports_doc_idx").on(t.documentInstanceId),
-  })
+  }),
 )
 
 export const questionBanks = mysqlTable(
@@ -361,10 +364,10 @@ export const questionBanks = mysqlTable(
   (t) => ({
     typeVersionUnique: uniqueIndex("qbanks_type_version_unique").on(
       t.docType,
-      t.version
+      t.version,
     ),
     activeIdx: index("qbanks_active_idx").on(t.docType, t.isActive),
-  })
+  }),
 )
 
 export const llmCallLogs = mysqlTable(
@@ -409,7 +412,7 @@ export const llmCallLogs = mysqlTable(
     userIdx: index("llm_logs_user_idx").on(t.userId),
     timeIdx: index("llm_logs_time_idx").on(t.createdAt),
     statusIdx: index("llm_logs_status_idx").on(t.status),
-  })
+  }),
 )
 
 export const rateLimitBuckets = mysqlTable(
@@ -425,7 +428,7 @@ export const rateLimitBuckets = mysqlTable(
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.bucketKey, t.windowStart] }),
     timeIdx: index("rate_limit_time_idx").on(t.windowStart),
-  })
+  }),
 )
 
 /* ------------------------------------------------------------------ */
@@ -458,7 +461,7 @@ export const documentInstancesRelations = relations(
     sections: many(sections),
     snapshots: many(documentSnapshots),
     exports: many(documentExports),
-  })
+  }),
 )
 
 export const sectionsRelations = relations(sections, ({ one, many }) => ({

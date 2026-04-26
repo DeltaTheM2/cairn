@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Lock } from "lucide-react"
 
 import { QuestionCard } from "@/app/(app)/app/docs/[id]/wizard/question-card"
 import type {
+  AnswerFeedback,
   WizardAnswer,
   WizardSection,
 } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
@@ -122,6 +123,10 @@ export function WizardChatShell({
     questionKey: string
     rawText: string
     sectionComplete: boolean
+    questionComplete: boolean
+    isSoftWarned: boolean
+    score: number
+    feedback: AnswerFeedback
   }) {
     const sectionId = sectionIdByKey.get(opts.sectionKey)
     if (!sectionId) return
@@ -132,7 +137,9 @@ export function WizardChatShell({
         questionKey: opts.questionKey,
         rawText: opts.rawText,
         draftText: "",
-        isSoftWarned: false,
+        isSoftWarned: opts.isSoftWarned,
+        adequacyScore: opts.score,
+        judgeFeedback: opts.feedback,
       })
       return next
     })
@@ -142,14 +149,22 @@ export function WizardChatShell({
       if (existing) {
         next.set(opts.sectionKey, {
           ...existing,
-          status: opts.sectionComplete ? "complete" : "in_progress",
+          status: opts.sectionComplete
+            ? "complete"
+            : opts.questionComplete
+              ? "in_progress"
+              : existing.status === "pending"
+                ? "in_progress"
+                : existing.status,
+          hasSoftWarnings: existing.hasSoftWarnings || opts.isSoftWarned,
         })
       }
       return next
     })
-    // auto-advance to the next accessible question
-    const target = nextAccessibleIndex(index, 1)
-    if (target !== -1) setIndex(target)
+    if (opts.questionComplete) {
+      const target = nextAccessibleIndex(index, 1)
+      if (target !== -1) setIndex(target)
+    }
   }
 
   function onDraftSaved(opts: {
@@ -169,6 +184,8 @@ export function WizardChatShell({
         rawText: existing?.rawText ?? "",
         draftText: opts.draftText,
         isSoftWarned: existing?.isSoftWarned ?? false,
+        adequacyScore: existing?.adequacyScore ?? null,
+        judgeFeedback: existing?.judgeFeedback ?? null,
       })
       return next
     })
@@ -214,6 +231,9 @@ export function WizardChatShell({
             question={current.question}
             initialDraft={currentAns?.draftText ?? ""}
             initialRawText={currentAns?.rawText ?? ""}
+            initialScore={currentAns?.adequacyScore ?? null}
+            initialFeedback={currentAns?.judgeFeedback ?? null}
+            initialSoftWarned={currentAns?.isSoftWarned ?? false}
             onAnswerSubmitted={onAnswerSubmitted}
             onDraftSaved={onDraftSaved}
           />

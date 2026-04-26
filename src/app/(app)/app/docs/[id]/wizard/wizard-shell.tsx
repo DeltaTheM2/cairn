@@ -16,12 +16,21 @@ export type WizardSection = {
   hasSoftWarnings: boolean
 }
 
+export type AnswerFeedback = {
+  strengths: string[]
+  weaknesses: string[]
+  suggestions: string[]
+  oneLineVerdict: string
+}
+
 export type WizardAnswer = {
   sectionId: number
   questionKey: string
   rawText: string
   draftText: string
   isSoftWarned: boolean
+  adequacyScore: number | null
+  judgeFeedback: AnswerFeedback | null
 }
 
 type Props = {
@@ -95,6 +104,10 @@ export function WizardShell({
     questionKey: string
     rawText: string
     sectionComplete: boolean
+    questionComplete: boolean
+    isSoftWarned: boolean
+    score: number
+    feedback: AnswerFeedback
   }) {
     const sectionId = sectionIdByKey.get(opts.sectionKey)
     if (!sectionId) return
@@ -105,7 +118,9 @@ export function WizardShell({
         questionKey: opts.questionKey,
         rawText: opts.rawText,
         draftText: "",
-        isSoftWarned: false,
+        isSoftWarned: opts.isSoftWarned,
+        adequacyScore: opts.score,
+        judgeFeedback: opts.feedback,
       })
       return next
     })
@@ -115,7 +130,14 @@ export function WizardShell({
       if (existing) {
         next.set(opts.sectionKey, {
           ...existing,
-          status: opts.sectionComplete ? "complete" : "in_progress",
+          status: opts.sectionComplete
+            ? "complete"
+            : opts.questionComplete
+              ? "in_progress"
+              : existing.status === "pending"
+                ? "in_progress"
+                : existing.status,
+          hasSoftWarnings: existing.hasSoftWarnings || opts.isSoftWarned,
         })
       }
       return next
@@ -139,6 +161,8 @@ export function WizardShell({
         rawText: existing?.rawText ?? "",
         draftText: opts.draftText,
         isSoftWarned: existing?.isSoftWarned ?? false,
+        adequacyScore: existing?.adequacyScore ?? null,
+        judgeFeedback: existing?.judgeFeedback ?? null,
       })
       return next
     })
@@ -280,6 +304,9 @@ export function WizardShell({
                       question={q}
                       initialDraft={ans?.draftText ?? ""}
                       initialRawText={ans?.rawText ?? ""}
+                      initialScore={ans?.adequacyScore ?? null}
+                      initialFeedback={ans?.judgeFeedback ?? null}
+                      initialSoftWarned={ans?.isSoftWarned ?? false}
                       onAnswerSubmitted={onAnswerSubmitted}
                       onDraftSaved={onDraftSaved}
                     />

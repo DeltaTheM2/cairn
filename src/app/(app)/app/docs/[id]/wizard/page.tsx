@@ -75,6 +75,7 @@ export default async function WizardPage({
           rawText: answers.rawText,
           draftText: answers.draftText,
           adequacyScore: answers.adequacyScore,
+          judgeFeedback: answers.judgeFeedback,
           isSoftWarned: answers.isSoftWarned,
           revisionCount: answers.revisionCount,
         })
@@ -124,6 +125,8 @@ export default async function WizardPage({
             rawText: a.rawText ?? "",
             draftText: a.draftText ?? "",
             isSoftWarned: a.isSoftWarned,
+            adequacyScore: a.adequacyScore,
+            judgeFeedback: a.judgeFeedback ?? null,
           }))}
         />
       ) : (
@@ -144,6 +147,8 @@ export default async function WizardPage({
             rawText: a.rawText ?? "",
             draftText: a.draftText ?? "",
             isSoftWarned: a.isSoftWarned,
+            adequacyScore: a.adequacyScore,
+            judgeFeedback: a.judgeFeedback ?? null,
           }))}
         />
       )}

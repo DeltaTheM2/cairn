@@ -19,6 +19,9 @@ export default defineConfig({
       // lib/db reads DATABASE_URL at import time; tests need it pointed
       // at the test database, NOT the dev one.
       DATABASE_URL: testDbUrl,
+      // The mock LLM provider activates when key=fake, so tests don't
+      // hit the real Anthropic API.
+      ANTHROPIC_API_KEY: "fake",
     },
   },
   resolve: {

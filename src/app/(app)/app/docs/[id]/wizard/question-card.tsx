@@ -1,9 +1,16 @@
 "use client"
 
 import * as React from "react"
-import { CheckCircle2, ChevronDown, ChevronUp } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  XCircle,
+} from "lucide-react"
 
 import { saveDraft, submitAnswer } from "@/actions/answers"
+import type { AnswerFeedback } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -17,11 +24,18 @@ type Props = {
   question: Question
   initialDraft: string
   initialRawText: string
+  initialScore: number | null
+  initialFeedback: AnswerFeedback | null
+  initialSoftWarned: boolean
   onAnswerSubmitted: (opts: {
     sectionKey: string
     questionKey: string
     rawText: string
     sectionComplete: boolean
+    questionComplete: boolean
+    isSoftWarned: boolean
+    score: number
+    feedback: AnswerFeedback
   }) => void
   onDraftSaved: (opts: {
     sectionKey: string
@@ -32,30 +46,69 @@ type Props = {
 
 const DEBOUNCE_MS = 800
 
+const SCORE_LABELS: Record<number, string> = {
+  1: "Inadequate",
+  2: "Weak",
+  3: "Borderline",
+  4: "Good",
+  5: "Excellent",
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const tone =
+    score >= 4
+      ? "bg-foreground/10 text-foreground border-foreground/30"
+      : score === 3
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : "border-destructive/40 bg-destructive/10 text-destructive"
+  const Icon = score >= 4 ? CheckCircle2 : score === 3 ? AlertTriangle : XCircle
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium",
+        tone,
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {score} · {SCORE_LABELS[score] ?? ""}
+    </span>
+  )
+}
+
 export function QuestionCard({
   documentId,
   sectionKey,
   question,
   initialDraft,
   initialRawText,
+  initialScore,
+  initialFeedback,
+  initialSoftWarned,
   onAnswerSubmitted,
   onDraftSaved,
 }: Props) {
   const initial = initialDraft || initialRawText || ""
   const [text, setText] = React.useState(initial)
   const [submittedText, setSubmittedText] = React.useState(initialRawText)
+  const [score, setScore] = React.useState<number | null>(initialScore)
+  const [feedback, setFeedback] = React.useState<AnswerFeedback | null>(
+    initialFeedback,
+  )
+  const [isSoftWarned, setIsSoftWarned] = React.useState(initialSoftWarned)
   const [saveState, setSaveState] = React.useState<SaveState>("idle")
   const [submitState, setSubmitState] = React.useState<"idle" | "submitting">(
     "idle",
   )
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [examplesOpen, setExamplesOpen] = React.useState(false)
+  const [feedbackOpen, setFeedbackOpen] = React.useState(true)
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = React.useRef(initialDraft)
 
   const isSubmitted = submittedText.length > 0 && submittedText === text
   const isDirty = text.length > 0 && text !== submittedText
+  const questionComplete = isSubmitted && score !== null && score >= 3
 
   React.useEffect(() => {
     return () => {
@@ -114,12 +167,20 @@ export function QuestionCard({
     }
     setSubmittedText(text)
     setSaveState("saved")
+    setScore(result.data.judge.score)
+    setFeedback(result.data.judge)
+    setIsSoftWarned(result.data.isSoftWarned)
+    setFeedbackOpen(true)
     lastSavedRef.current = ""
     onAnswerSubmitted({
       sectionKey,
       questionKey: question.key,
       rawText: text,
       sectionComplete: result.data.sectionComplete,
+      questionComplete: result.data.questionComplete,
+      isSoftWarned: result.data.isSoftWarned,
+      score: result.data.judge.score,
+      feedback: result.data.judge,
     })
   }
 
@@ -131,17 +192,14 @@ export function QuestionCard({
     <article
       className={cn(
         "border-border flex flex-col gap-3 rounded-lg border p-4",
-        isSubmitted && "border-foreground/30",
+        questionComplete && !isSoftWarned && "border-foreground/30",
+        isSoftWarned && "border-amber-500/40",
+        score !== null && score < 3 && "border-destructive/40",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-foreground text-sm font-medium">{question.prompt}</p>
-        {isSubmitted ? (
-          <span className="text-foreground inline-flex shrink-0 items-center gap-1 text-xs">
-            <CheckCircle2 className="h-4 w-4" />
-            Submitted
-          </span>
-        ) : null}
+        {isSubmitted && score !== null ? <ScoreBadge score={score} /> : null}
       </div>
 
       {question.examples.length > 0 ? (
@@ -192,7 +250,9 @@ export function QuestionCard({
             {maxLen ? ` (max ${maxLen})` : ""}
           </span>
           {saveState === "saving" ? <span>Saving…</span> : null}
-          {saveState === "saved" && !isSubmitted ? <span>Draft saved</span> : null}
+          {saveState === "saved" && !isSubmitted ? (
+            <span>Draft saved</span>
+          ) : null}
           {saveState === "error" ? (
             <span className="text-destructive">Save failed</span>
           ) : null}
@@ -207,13 +267,94 @@ export function QuestionCard({
             disabled={!isDirty || submitState === "submitting"}
           >
             {submitState === "submitting"
-              ? "Submitting…"
+              ? "Judging…"
               : isSubmitted
                 ? "Resubmit"
                 : "Submit"}
           </Button>
         </div>
       </div>
+
+      {feedback && isSubmitted ? (
+        <FeedbackPanel
+          feedback={feedback}
+          score={score ?? 0}
+          open={feedbackOpen}
+          onToggle={() => setFeedbackOpen((o) => !o)}
+        />
+      ) : null}
     </article>
+  )
+}
+
+function FeedbackPanel({
+  feedback,
+  score,
+  open,
+  onToggle,
+}: {
+  feedback: AnswerFeedback
+  score: number
+  open: boolean
+  onToggle: () => void
+}) {
+  const tone =
+    score >= 4
+      ? "border-foreground/20 bg-muted/40"
+      : score === 3
+        ? "border-amber-500/30 bg-amber-500/5"
+        : "border-destructive/30 bg-destructive/5"
+
+  return (
+    <div className={cn("rounded-md border p-3", tone)}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="text-foreground inline-flex items-center gap-1 text-xs font-medium"
+        aria-expanded={open}
+      >
+        {open ? (
+          <ChevronUp className="h-3 w-3" />
+        ) : (
+          <ChevronDown className="h-3 w-3" />
+        )}
+        Judge feedback
+      </button>
+      <p className="text-foreground mt-2 text-sm">{feedback.oneLineVerdict}</p>
+      {open ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <FeedbackList label="Strengths" items={feedback.strengths} />
+          <FeedbackList label="Weaknesses" items={feedback.weaknesses} />
+          <FeedbackList label="Suggestions" items={feedback.suggestions} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function FeedbackList({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <div>
+        <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          {label}
+        </div>
+        <p className="text-muted-foreground mt-1 text-xs italic">none</p>
+      </div>
+    )
+  }
+  return (
+    <div>
+      <div className="text-muted-foreground text-xs uppercase tracking-wider">
+        {label}
+      </div>
+      <ul className="mt-1 flex flex-col gap-1">
+        {items.map((it, i) => (
+          <li key={i} className="text-foreground text-xs">
+            • {it}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

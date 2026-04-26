@@ -1,0 +1,43 @@
+# Cairn — systemd unit.
+#
+# Install:
+#   sudo cp infra/cairn.service /etc/systemd/system/cairn.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cairn.service
+#   sudo systemctl status cairn.service
+#
+# After code changes:
+#   pnpm build          # rebuilds .next/standalone/ and copies static assets
+#   sudo systemctl restart cairn.service
+#
+# Logs:
+#   journalctl -u cairn.service -f
+#
+# Prereqs:
+#   - .env.local present at /home/soroush/cairn/.env.local with all
+#     AUTH_*, DATABASE_URL, ANTHROPIC_API_KEY, AUTH_URL=https://cairn.wizardtools.ai
+#   - .next/standalone/server.js exists (run `pnpm build` once)
+
+[Unit]
+Description=Cairn — documentation wizard (Next.js standalone)
+After=network.target mysql.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=soroush
+Group=soroush
+WorkingDirectory=/home/soroush/cairn
+EnvironmentFile=/home/soroush/cairn/.env.local
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=13002
+ExecStart=/usr/bin/node /home/soroush/cairn/.next/standalone/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cairn
+
+[Install]
+WantedBy=multi-user.target

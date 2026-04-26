@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/db-seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "route-check": "tsx scripts/route-check.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",

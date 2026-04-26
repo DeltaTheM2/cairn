@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { and, eq, inArray, isNull } from "drizzle-orm"
 import { ChevronLeft } from "lucide-react"
 
+import { WizardChatShell } from "@/app/(app)/app/docs/[id]/wizard/wizard-chat-shell"
 import { WizardShell } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -13,6 +14,7 @@ import {
   documentInstances,
   projects,
   sections,
+  userPreferences,
 } from "@/lib/db/schema"
 import { loadQuestionBank, type SupportedDocType } from "@/lib/question-bank"
 
@@ -80,6 +82,13 @@ export default async function WizardPage({
         .where(inArray(answers.sectionId, sectionIds))
     : []
 
+  const [prefs] = await db
+    .select({ wizardMode: userPreferences.wizardMode })
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, user.id))
+    .limit(1)
+  const wizardMode = prefs?.wizardMode ?? "section"
+
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10">
       <div className="flex items-center justify-between gap-4">
@@ -97,25 +106,47 @@ export default async function WizardPage({
         <ThemeToggle />
       </div>
 
-      <WizardShell
-        documentId={doc.id}
-        documentName={doc.name}
-        bank={bank}
-        sections={sectionRows.map((s) => ({
-          id: s.id,
-          key: s.sectionKey,
-          orderIndex: s.orderIndex,
-          status: s.status,
-          hasSoftWarnings: s.hasSoftWarnings,
-        }))}
-        answers={answerRows.map((a) => ({
-          sectionId: a.sectionId,
-          questionKey: a.questionKey,
-          rawText: a.rawText ?? "",
-          draftText: a.draftText ?? "",
-          isSoftWarned: a.isSoftWarned,
-        }))}
-      />
+      {wizardMode === "chat" ? (
+        <WizardChatShell
+          documentId={doc.id}
+          documentName={doc.name}
+          bank={bank}
+          sections={sectionRows.map((s) => ({
+            id: s.id,
+            key: s.sectionKey,
+            orderIndex: s.orderIndex,
+            status: s.status,
+            hasSoftWarnings: s.hasSoftWarnings,
+          }))}
+          answers={answerRows.map((a) => ({
+            sectionId: a.sectionId,
+            questionKey: a.questionKey,
+            rawText: a.rawText ?? "",
+            draftText: a.draftText ?? "",
+            isSoftWarned: a.isSoftWarned,
+          }))}
+        />
+      ) : (
+        <WizardShell
+          documentId={doc.id}
+          documentName={doc.name}
+          bank={bank}
+          sections={sectionRows.map((s) => ({
+            id: s.id,
+            key: s.sectionKey,
+            orderIndex: s.orderIndex,
+            status: s.status,
+            hasSoftWarnings: s.hasSoftWarnings,
+          }))}
+          answers={answerRows.map((a) => ({
+            sectionId: a.sectionId,
+            questionKey: a.questionKey,
+            rawText: a.rawText ?? "",
+            draftText: a.draftText ?? "",
+            isSoftWarned: a.isSoftWarned,
+          }))}
+        />
+      )}
     </main>
   )
 }

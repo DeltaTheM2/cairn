@@ -1,7 +1,10 @@
-import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { Settings } from "lucide-react"
+
+import { Button, buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { requireUser } from "@/lib/auth-helpers"
 import { signOut } from "@/lib/auth"
+import { requireUser } from "@/lib/auth-helpers"
 
 export default async function AppHome() {
   const user = await requireUser()
@@ -24,6 +27,17 @@ export default async function AppHome() {
         <p className="text-muted-foreground text-sm">
           Signed in as <span className="text-foreground">{user.email}</span>
         </p>
+        <Link
+          href="/app/settings"
+          className={buttonVariants({
+            variant: "outline",
+            size: "lg",
+            className: "w-full",
+          })}
+        >
+          <Settings className="h-4 w-4" />
+          Settings
+        </Link>
         <form action={handleSignOut}>
           <Button type="submit" variant="outline" className="w-full">
             Sign out

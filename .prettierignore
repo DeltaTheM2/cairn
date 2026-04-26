@@ -1,0 +1,18 @@
+node_modules
+.next
+out
+build
+coverage
+public
+storage
+pnpm-lock.yaml
+*.tsbuildinfo
+next-env.d.ts
+
+# Pre-existing tracked content that predates this prettier config —
+# leave it alone here; future commits that touch these files can format on demand.
+docs/
+src/lib/db/
+CONTRIBUTING.md
+README.md
+.env.example

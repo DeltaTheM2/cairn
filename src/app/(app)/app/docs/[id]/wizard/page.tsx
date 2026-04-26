@@ -1,26 +1,87 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { ChevronLeft } from "lucide-react"
 
-import { getDocument } from "@/actions/documents"
+import { WizardShell } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { requireUser } from "@/lib/auth-helpers"
+import { db } from "@/lib/db"
+import {
+  answers,
+  documentInstances,
+  projects,
+  sections,
+} from "@/lib/db/schema"
+import { loadQuestionBank, type SupportedDocType } from "@/lib/question-bank"
 
-export default async function WizardPlaceholder({
+export default async function WizardPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
+  const user = await requireUser()
   const { id: idParam } = await params
   const id = Number(idParam)
   if (!Number.isInteger(id) || id <= 0) notFound()
 
-  const result = await getDocument({ id })
-  if (!result.ok) notFound()
-  const doc = result.data
+  const [doc] = await db
+    .select({
+      id: documentInstances.id,
+      name: documentInstances.name,
+      docType: documentInstances.docType,
+      questionBankVersion: documentInstances.questionBankVersion,
+      status: documentInstances.status,
+      projectId: documentInstances.projectId,
+      projectName: projects.name,
+      ownerId: projects.ownerId,
+    })
+    .from(documentInstances)
+    .innerJoin(projects, eq(projects.id, documentInstances.projectId))
+    .where(
+      and(
+        eq(documentInstances.id, id),
+        isNull(documentInstances.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  if (!doc || doc.ownerId !== user.id) notFound()
+
+  const bank = loadQuestionBank(doc.docType as SupportedDocType)
+
+  const sectionRows = await db
+    .select({
+      id: sections.id,
+      sectionKey: sections.sectionKey,
+      orderIndex: sections.orderIndex,
+      status: sections.status,
+      hasSoftWarnings: sections.hasSoftWarnings,
+    })
+    .from(sections)
+    .where(eq(sections.documentInstanceId, doc.id))
+    .orderBy(sections.orderIndex)
+
+  const sectionIds = sectionRows.map((s) => s.id)
+  const answerRows = sectionIds.length
+    ? await db
+        .select({
+          sectionId: answers.sectionId,
+          questionKey: answers.questionKey,
+          rawText: answers.rawText,
+          draftText: answers.draftText,
+          adequacyScore: answers.adequacyScore,
+          isSoftWarned: answers.isSoftWarned,
+          revisionCount: answers.revisionCount,
+        })
+        .from(answers)
+        .where(inArray(answers.sectionId, sectionIds))
+    : []
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-10 sm:py-14">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-10">
       <div className="flex items-center justify-between gap-4">
         <Link
           href={`/app/docs/${doc.id}`}
@@ -36,25 +97,25 @@ export default async function WizardPlaceholder({
         <ThemeToggle />
       </div>
 
-      <header className="flex flex-col gap-1">
-        <span className="text-muted-foreground text-xs uppercase tracking-wider">
-          Wizard · placeholder
-        </span>
-        <h1 className="text-foreground text-3xl font-semibold tracking-tight">
-          {doc.name}
-        </h1>
-      </header>
-
-      <div className="border-border bg-card text-card-foreground flex flex-col gap-2 rounded-lg border border-dashed p-8 text-center">
-        <p className="text-foreground text-base font-medium">
-          Wizard ships in P4.2.
-        </p>
-        <p className="text-muted-foreground text-sm">
-          The {doc.sections.length} sections seeded for this document will
-          render here as a section-mode wizard with rule-checked answer
-          submission. Adequacy judging and the coach loop come in P5.2 / P5.3.
-        </p>
-      </div>
+      <WizardShell
+        documentId={doc.id}
+        documentName={doc.name}
+        bank={bank}
+        sections={sectionRows.map((s) => ({
+          id: s.id,
+          key: s.sectionKey,
+          orderIndex: s.orderIndex,
+          status: s.status,
+          hasSoftWarnings: s.hasSoftWarnings,
+        }))}
+        answers={answerRows.map((a) => ({
+          sectionId: a.sectionId,
+          questionKey: a.questionKey,
+          rawText: a.rawText ?? "",
+          draftText: a.draftText ?? "",
+          isSoftWarned: a.isSoftWarned,
+        }))}
+      />
     </main>
   )
 }

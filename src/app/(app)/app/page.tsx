@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Settings } from "lucide-react"
+import { FolderOpen, Settings } from "lucide-react"
 
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -27,6 +27,16 @@ export default async function AppHome() {
         <p className="text-muted-foreground text-sm">
           Signed in as <span className="text-foreground">{user.email}</span>
         </p>
+        <Link
+          href="/app/projects"
+          className={buttonVariants({
+            size: "lg",
+            className: "w-full",
+          })}
+        >
+          <FolderOpen className="h-4 w-4" />
+          Projects
+        </Link>
         <Link
           href="/app/settings"
           className={buttonVariants({

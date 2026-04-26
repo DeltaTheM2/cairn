@@ -1,27 +1,16 @@
 import prdBank from "../../prompts/question-banks/prd.json"
 
-/**
- * Minimal question-bank shape used by P3.2's document creation flow.
- * P4.1's seeder will define the full Zod schema and seed `question_banks`.
- * Until then we read directly from the JSON files (bundled at build time).
- */
-export type QuestionBankSection = {
-  key: string
-  title: string
-  description: string
-  questions: Array<{ key: string; prompt: string }>
-}
+import {
+  questionBankSchema,
+  type QuestionBank,
+  type Section,
+} from "@/lib/validation/question-bank"
 
-export type QuestionBank = {
-  doc_type: string
-  version: string
-  title: string
-  description?: string
-  sections: QuestionBankSection[]
-}
+export type { QuestionBank, Section }
+export type QuestionBankSection = Section
 
 const BANKS: Record<string, QuestionBank> = {
-  prd: prdBank as QuestionBank,
+  prd: questionBankSchema.parse(prdBank),
 }
 
 export const SUPPORTED_DOC_TYPES = ["prd"] as const
@@ -33,4 +22,11 @@ export function loadQuestionBank(docType: SupportedDocType): QuestionBank {
     throw new Error(`No question bank for doc type "${docType}"`)
   }
   return bank
+}
+
+export function listAllQuestionBankFiles(): Array<{
+  docType: string
+  bank: QuestionBank
+}> {
+  return Object.entries(BANKS).map(([docType, bank]) => ({ docType, bank }))
 }

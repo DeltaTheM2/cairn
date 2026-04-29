@@ -12,13 +12,15 @@ import {
   sections,
   type JudgeFeedback,
 } from "@/lib/db/schema"
+import { callCoach } from "@/lib/llm/calls/coach"
 import { callJudge } from "@/lib/llm/calls/judge"
-import type { JudgeOutput } from "@/lib/llm/schemas"
+import type { CoachOutput, JudgeOutput } from "@/lib/llm/schemas"
 import { loadQuestionBank, type SupportedDocType } from "@/lib/question-bank"
 import {
   saveDraftInputSchema,
   submitAnswerInputSchema,
 } from "@/lib/validation/answers"
+import { isAnswerComplete } from "@/lib/wizard/answer-status"
 import { ruleCheck } from "@/lib/wizard/rule-check"
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -84,12 +86,19 @@ export async function saveDraft(input: unknown): Promise<Result<null>> {
 
 export type SubmitFeedback = JudgeFeedback & { score: 1 | 2 | 3 | 4 | 5 }
 
+export type SubmitCoach = CoachOutput
+
 type SubmitResult = Result<{
   sectionComplete: boolean
   questionComplete: boolean
   isSoftWarned: boolean
   judge: SubmitFeedback
+  coach: SubmitCoach | null
+  revisionCount: number
+  forcedComplete: boolean
 }>
+
+const MAX_COACH_ITERATIONS = 3
 
 function feedbackFor(score: number, output: JudgeOutput): SubmitFeedback {
   return {
@@ -103,17 +112,22 @@ function feedbackFor(score: number, output: JudgeOutput): SubmitFeedback {
 
 /**
  * Submit pipeline for an answer:
- *   rule-check → adequacy judge → write rawText + adequacy_score +
- *   judge_feedback → recompute section.status.
+ *   rule-check → adequacy judge → (coach loop on score <= 2) → write
+ *   rawText + adequacy_score + judge_feedback + revision_count → recompute
+ *   section.status.
  *
- * A question counts as "complete" when adequacy_score >= 3. A section is
- * "complete" when every question is complete. Score 3 is complete-with-
- * soft-warning; score <= 2 keeps the question incomplete (the user has
- * to revise — coach loop ships in P5.3).
+ * Question completion rules:
+ *   score >= 4              → complete, no soft-warn
+ *   score == 3              → complete, soft-warn
+ *   score <= 2, rev < cap   → NOT complete; coach output returned to UI;
+ *                              revision_count incremented
+ *   score <= 2, rev >= cap  → force complete with soft-warn (per spec
+ *                              § 4.3 — after 3 failed coach iterations,
+ *                              soft-warn and let the user advance)
  *
- * If the judge call fails (rate-limited / over-budget / provider error)
- * the rawText is NOT written. The user's draft is still preserved by the
- * debounced auto-save.
+ * On coach call failure we still write the answer (the user already saw
+ * the score) but the UI gets a null coach output and a hint that the
+ * coach was unavailable.
  */
 export async function submitAnswer(input: unknown): Promise<SubmitResult> {
   const user = await requireUser()
@@ -172,8 +186,67 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
 
   const score = judge.data.score
   const feedback = feedbackFor(score, judge.data)
-  const isSoftWarned = score === 3
-  const questionComplete = score >= 3
+
+  // Read existing revision_count to decide whether to coach or force-advance.
+  const [existingAnswer] = await db
+    .select({
+      revisionCount: answers.revisionCount,
+    })
+    .from(answers)
+    .where(
+      and(
+        eq(answers.sectionId, section.sectionId),
+        eq(answers.questionKey, parsed.data.questionKey),
+      ),
+    )
+    .limit(1)
+  const previousRevisions = existingAnswer?.revisionCount ?? 0
+
+  let questionComplete: boolean
+  let isSoftWarned: boolean
+  let forcedComplete = false
+  let coachOutput: CoachOutput | null = null
+  let nextRevisionCount = previousRevisions
+
+  if (score >= 4) {
+    questionComplete = true
+    isSoftWarned = false
+  } else if (score === 3) {
+    questionComplete = true
+    isSoftWarned = true
+  } else if (previousRevisions >= MAX_COACH_ITERATIONS) {
+    // Already had MAX iterations of coaching; force the user forward.
+    questionComplete = true
+    isSoftWarned = true
+    forcedComplete = true
+    nextRevisionCount = previousRevisions + 1
+  } else {
+    // score <= 2, still under the iteration cap — run the coach.
+    nextRevisionCount = previousRevisions + 1
+    questionComplete = false
+    isSoftWarned = false
+    const coach = await callCoach(
+      {
+        doc_type: section.docType,
+        section_title: sectionDef.title,
+        question_prompt: questionDef.prompt,
+        user_answer: parsed.data.rawText,
+        judge_score: score,
+        judge_strengths: judge.data.strengths,
+        judge_weaknesses: judge.data.weaknesses,
+        judge_suggestions: judge.data.suggestions,
+        revision_count: nextRevisionCount,
+      },
+      {
+        userId: user.id,
+        projectId: section.projectId,
+        documentInstanceId: parsed.data.documentId,
+      },
+    )
+    if (coach.ok) coachOutput = coach.data
+    // On coach failure (rate_limited / budget / error) we still write the
+    // answer + judge feedback below; UI handles a null coach output.
+  }
 
   await db
     .insert(answers)
@@ -185,6 +258,7 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
       adequacyScore: score,
       judgeFeedback: feedback,
       isSoftWarned,
+      revisionCount: nextRevisionCount,
       lastJudgedAt: new Date(),
     })
     .onDuplicateKeyUpdate({
@@ -194,6 +268,7 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
         adequacyScore: score,
         judgeFeedback: feedback,
         isSoftWarned,
+        revisionCount: nextRevisionCount,
         lastJudgedAt: new Date(),
       },
     })
@@ -210,9 +285,7 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
     .where(eq(answers.sectionId, section.sectionId))
 
   const completeKeys = new Set(
-    sectionAnswers
-      .filter((a) => (a.adequacyScore ?? 0) >= 3)
-      .map((a) => a.questionKey),
+    sectionAnswers.filter(isAnswerComplete).map((a) => a.questionKey),
   )
   const allDone = sectionDef.questions.every((q) => completeKeys.has(q.key))
   const sectionHasSoftWarning = sectionAnswers.some((a) => a.isSoftWarned)
@@ -240,6 +313,9 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
       questionComplete,
       isSoftWarned,
       judge: feedback,
+      coach: coachOutput,
+      revisionCount: nextRevisionCount,
+      forcedComplete,
     },
   }
 }

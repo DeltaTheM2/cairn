@@ -13,8 +13,10 @@ import { saveDraft, submitAnswer } from "@/actions/answers"
 import type { AnswerFeedback } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import type { CoachOutput } from "@/lib/llm/schemas"
 import { cn } from "@/lib/utils"
 import type { Question } from "@/lib/validation/question-bank"
+import { isAnswerComplete } from "@/lib/wizard/answer-status"
 
 type SaveState = "idle" | "saving" | "saved" | "error"
 
@@ -43,6 +45,8 @@ type Props = {
     draftText: string
   }) => void
 }
+
+const MAX_COACH_ITERATIONS = 3
 
 const DEBOUNCE_MS = 800
 
@@ -102,13 +106,17 @@ export function QuestionCard({
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [examplesOpen, setExamplesOpen] = React.useState(false)
   const [feedbackOpen, setFeedbackOpen] = React.useState(true)
+  const [coach, setCoach] = React.useState<CoachOutput | null>(null)
+  const [revisionCount, setRevisionCount] = React.useState(0)
+  const [forcedComplete, setForcedComplete] = React.useState(false)
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = React.useRef(initialDraft)
 
   const isSubmitted = submittedText.length > 0 && submittedText === text
   const isDirty = text.length > 0 && text !== submittedText
-  const questionComplete = isSubmitted && score !== null && score >= 3
+  const questionComplete =
+    isSubmitted && isAnswerComplete({ adequacyScore: score, isSoftWarned })
 
   React.useEffect(() => {
     return () => {
@@ -171,6 +179,9 @@ export function QuestionCard({
     setFeedback(result.data.judge)
     setIsSoftWarned(result.data.isSoftWarned)
     setFeedbackOpen(true)
+    setCoach(result.data.coach)
+    setRevisionCount(result.data.revisionCount)
+    setForcedComplete(result.data.forcedComplete)
     lastSavedRef.current = ""
     onAnswerSubmitted({
       sectionKey,
@@ -283,6 +294,22 @@ export function QuestionCard({
           onToggle={() => setFeedbackOpen((o) => !o)}
         />
       ) : null}
+
+      {coach && !questionComplete ? (
+        <CoachPanel
+          coach={coach}
+          revisionCount={revisionCount}
+          maxIterations={MAX_COACH_ITERATIONS}
+        />
+      ) : null}
+
+      {forcedComplete ? (
+        <p className="text-muted-foreground text-xs">
+          Soft-warned and advanced — coach hit the {MAX_COACH_ITERATIONS}-
+          iteration cap. The synthesized doc will note this answer is
+          uncertain.
+        </p>
+      ) : null}
     </article>
   )
 }
@@ -328,6 +355,64 @@ function FeedbackPanel({
           <FeedbackList label="Suggestions" items={feedback.suggestions} />
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function CoachPanel({
+  coach,
+  revisionCount,
+  maxIterations,
+}: {
+  coach: CoachOutput
+  revisionCount: number
+  maxIterations: number
+}) {
+  return (
+    <div className="border-foreground/20 bg-muted/40 flex flex-col gap-3 rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-foreground text-xs font-medium">
+          Coach · attempt {revisionCount} of {maxIterations}
+        </div>
+        {coach.encouragement ? (
+          <div className="text-muted-foreground text-xs italic">
+            {coach.encouragement}
+          </div>
+        ) : null}
+      </div>
+
+      <div>
+        <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          Try this rephrasing
+        </div>
+        <p className="text-foreground mt-1 text-sm">
+          {coach.rephrased_question}
+        </p>
+      </div>
+
+      <div>
+        <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          Examples (don&apos;t copy — calibrate)
+        </div>
+        <ul className="mt-1 flex flex-col gap-2">
+          {coach.examples.map((ex, i) => (
+            <li
+              key={i}
+              className="border-border bg-background rounded-md border p-2 text-xs"
+            >
+              <div className="text-muted-foreground italic">{ex.context}</div>
+              <p className="text-foreground mt-1">{ex.answer}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div>
+        <div className="text-muted-foreground text-xs uppercase tracking-wider">
+          Follow-up to consider
+        </div>
+        <p className="text-foreground mt-1 text-sm">{coach.follow_up}</p>
+      </div>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Check, ChevronRight, CircleDot, Lock } from "lucide-react"
 
 import { QuestionCard } from "@/app/(app)/app/docs/[id]/wizard/question-card"
+import { SuggesterButton } from "@/app/(app)/app/docs/[id]/wizard/suggester-button"
 import { SynthesisRail } from "@/app/(app)/app/docs/[id]/wizard/synthesis-rail"
 import { cn } from "@/lib/utils"
 import type { QuestionBank } from "@/lib/validation/question-bank"
@@ -314,6 +315,14 @@ export function WizardShell({
                     />
                   )
                 })}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <SuggesterButton
+                  documentId={documentId}
+                  sectionKey={currentSection.key}
+                  sectionTitle={currentSection.title}
+                />
               </div>
             </>
           ) : (

@@ -13,6 +13,23 @@ if (!url) {
 export const pool = mysql.createPool({
   uri: url,
   connectionLimit: 10,
+  // mysql2 returns JSON columns as raw strings unless we typeCast them.
+  // Without this, code that reads a JSON column (judgeFeedback,
+  // llmSuggestions, document_snapshots.stateJson) gets a string and any
+  // attempt to access nested fields blows up — caught the wizard at
+  // page-load time when re-loading a doc with prior judge results.
+  typeCast(field, next) {
+    if (field.type === "JSON") {
+      const s = field.string()
+      if (s == null) return null
+      try {
+        return JSON.parse(s)
+      } catch {
+        return s
+      }
+    }
+    return next()
+  },
 })
 
 export const db = drizzle(pool, {

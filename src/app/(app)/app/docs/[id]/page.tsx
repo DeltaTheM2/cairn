@@ -1,11 +1,14 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ChevronLeft } from "lucide-react"
+import { and, desc, eq } from "drizzle-orm"
+import { ChevronLeft, Download } from "lucide-react"
 
 import { getDocument } from "@/actions/documents"
 import { DocumentActions } from "@/app/(app)/app/docs/[id]/document-actions"
 import { buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { db } from "@/lib/db"
+import { documentExports } from "@/lib/db/schema"
 import { cn } from "@/lib/utils"
 
 const STATUS_STYLES: Record<string, string> = {
@@ -29,6 +32,19 @@ export default async function DocumentDetailPage({
 
   const completed = doc.sections.filter((s) => s.status === "complete").length
   const total = doc.sections.length
+
+  const [latestMdExport] = await db
+    .select({ id: documentExports.id })
+    .from(documentExports)
+    .where(
+      and(
+        eq(documentExports.documentInstanceId, doc.id),
+        eq(documentExports.format, "md"),
+      ),
+    )
+    .orderBy(desc(documentExports.generatedAt))
+    .limit(1)
+  const hasExport = !!latestMdExport
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-6 py-10 sm:py-14">
@@ -65,6 +81,32 @@ export default async function DocumentDetailPage({
       >
         Start wizard
       </Link>
+
+      {hasExport ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-foreground text-base font-medium">Download</h2>
+          <div className="flex flex-wrap gap-2">
+            {(["md", "pdf", "docx"] as const).map((fmt) => (
+              <a
+                key={fmt}
+                href={`/api/docs/${doc.id}/export/${fmt}`}
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                })}
+                download
+              >
+                <Download className="h-4 w-4" />
+                {fmt.toUpperCase()}
+              </a>
+            ))}
+          </div>
+          <p className="text-muted-foreground text-xs">
+            PDF and DOCX are generated on first request and cached until you
+            re-synthesize.
+          </p>
+        </section>
+      ) : null}
 
       <section className="flex flex-col gap-2">
         <h2 className="text-foreground text-base font-medium">Sections</h2>

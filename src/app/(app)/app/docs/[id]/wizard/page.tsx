@@ -8,7 +8,7 @@ import { WizardShell } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { buttonVariants } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { requireUser } from "@/lib/auth-helpers"
-import { db } from "@/lib/db"
+import { db, parseMaybeJson } from "@/lib/db"
 import {
   answers,
   documentInstances,
@@ -126,7 +126,7 @@ export default async function WizardPage({
             draftText: a.draftText ?? "",
             isSoftWarned: a.isSoftWarned,
             adequacyScore: a.adequacyScore,
-            judgeFeedback: a.judgeFeedback ?? null,
+            judgeFeedback: parseMaybeJson(a.judgeFeedback),
           }))}
         />
       ) : (
@@ -148,7 +148,7 @@ export default async function WizardPage({
             draftText: a.draftText ?? "",
             isSoftWarned: a.isSoftWarned,
             adequacyScore: a.adequacyScore,
-            judgeFeedback: a.judgeFeedback ?? null,
+            judgeFeedback: parseMaybeJson(a.judgeFeedback),
           }))}
         />
       )}

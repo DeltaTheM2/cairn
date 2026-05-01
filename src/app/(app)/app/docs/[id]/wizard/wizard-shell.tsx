@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Check, ChevronRight, CircleDot, Lock } from "lucide-react"
 
 import { QuestionCard } from "@/app/(app)/app/docs/[id]/wizard/question-card"
+import { SynthesisRail } from "@/app/(app)/app/docs/[id]/wizard/synthesis-rail"
 import { cn } from "@/lib/utils"
 import type { QuestionBank } from "@/lib/validation/question-bank"
 
@@ -177,6 +178,7 @@ export function WizardShell({
     (s) => s.db?.status === "complete",
   ).length
   const total = orderedSections.length
+  const allComplete = total > 0 && completed === total
 
   return (
     <div className="flex flex-col gap-6">
@@ -225,7 +227,7 @@ export function WizardShell({
         </select>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)_20rem]">
         {/* Section rail (lg+) */}
         <aside className="hidden lg:block">
           <ol className="border-border divide-border flex flex-col divide-y rounded-lg border">
@@ -318,6 +320,10 @@ export function WizardShell({
             <p className="text-muted-foreground text-sm">No section selected.</p>
           )}
         </section>
+
+        <aside>
+          <SynthesisRail documentId={documentId} allComplete={allComplete} />
+        </aside>
       </div>
     </div>
   )

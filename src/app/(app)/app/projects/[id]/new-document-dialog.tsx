@@ -29,12 +29,16 @@ type NewDocumentFormValues = z.infer<typeof newDocumentFormSchema>
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   prd: "PRD — Product Requirements Document",
+  srs: "SRS — Software Requirements Specification",
+  adr: "ADR — Architecture Decision Record",
+  user_story: "User Story — INVEST + Given/When/Then",
 }
 
 const FUTURE_DOC_TYPES = [
-  { value: "srs", label: "SRS (post-MVP)" },
-  { value: "adr", label: "ADR (post-MVP)" },
-  { value: "user_story", label: "User Story (post-MVP)" },
+  { value: "arc42", label: "arc42 — Software Architecture (v1.1)" },
+  { value: "openapi", label: "OpenAPI 3.x (v1.1)" },
+  { value: "threat_model", label: "STRIDE Threat Model (v1.1)" },
+  { value: "runbook", label: "Runbook / Playbook (v1.1)" },
 ]
 
 export function NewDocumentDialog({ projectId }: { projectId: number }) {

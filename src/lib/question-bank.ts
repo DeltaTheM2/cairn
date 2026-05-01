@@ -1,4 +1,7 @@
+import adrBank from "../../prompts/question-banks/adr.json"
 import prdBank from "../../prompts/question-banks/prd.json"
+import srsBank from "../../prompts/question-banks/srs.json"
+import userStoryBank from "../../prompts/question-banks/user-story.json"
 
 import {
   questionBankSchema,
@@ -11,9 +14,12 @@ export type QuestionBankSection = Section
 
 const BANKS: Record<string, QuestionBank> = {
   prd: questionBankSchema.parse(prdBank),
+  srs: questionBankSchema.parse(srsBank),
+  adr: questionBankSchema.parse(adrBank),
+  user_story: questionBankSchema.parse(userStoryBank),
 }
 
-export const SUPPORTED_DOC_TYPES = ["prd"] as const
+export const SUPPORTED_DOC_TYPES = ["prd", "srs", "adr", "user_story"] as const
 export type SupportedDocType = (typeof SUPPORTED_DOC_TYPES)[number]
 
 export function loadQuestionBank(docType: SupportedDocType): QuestionBank {

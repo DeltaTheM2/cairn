@@ -108,7 +108,9 @@ describe("createDocument", () => {
   it("rejects unsupported doc types via zod", async () => {
     const projectId = await insertProject(U1.id)
     authAs(U1)
-    const r = await createDocument({ projectId, docType: "srs", name: "x" })
+    // arc42 is a v1.1 placeholder in the dialog's FUTURE_DOC_TYPES — not in
+    // SUPPORTED_DOC_TYPES, so the zod enum should reject it.
+    const r = await createDocument({ projectId, docType: "arc42", name: "x" })
     expect(r.ok).toBe(false)
   })
 

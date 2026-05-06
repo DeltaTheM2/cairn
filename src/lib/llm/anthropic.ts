@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 
+import { extractJson } from "@/lib/llm/extract-json"
 import { interpolate, loadPrompt } from "@/lib/llm/load-prompt"
 import { MODELS } from "@/lib/llm/pricing"
 import type {
@@ -88,7 +89,7 @@ export class AnthropicProvider implements LLMProvider {
     const latencyMs = Date.now() - start
 
     const text = extractText(response.content)
-    const data = judgeOutputSchema.parse(JSON.parse(text))
+    const data = judgeOutputSchema.parse(extractJson(text))
 
     return {
       data,
@@ -123,7 +124,7 @@ export class AnthropicProvider implements LLMProvider {
     const latencyMs = Date.now() - start
 
     const text = extractText(response.content)
-    const data = coachOutputSchema.parse(JSON.parse(text))
+    const data = coachOutputSchema.parse(extractJson(text))
 
     return {
       data,
@@ -155,7 +156,7 @@ export class AnthropicProvider implements LLMProvider {
     const latencyMs = Date.now() - start
 
     const text = extractText(response.content)
-    const data = suggesterOutputSchema.parse(JSON.parse(text))
+    const data = suggesterOutputSchema.parse(extractJson(text))
 
     return {
       data,

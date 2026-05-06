@@ -144,21 +144,43 @@ export function SuggesterButton({
         ) : null}
 
         {state.kind === "loaded" ? (
-          <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
-            {(Object.keys(CATEGORY_LABELS) as Category[]).map((cat) => {
-              const items = state.output[cat]
+          (() => {
+            const totalItems =
+              state.output.missing_features.length +
+              state.output.edge_cases.length +
+              state.output.risks.length
+            if (totalItems === 0) {
               return (
-                <SuggestionCategory
-                  key={cat}
-                  label={CATEGORY_LABELS[cat]}
-                  items={items}
-                  selected={selected}
-                  onToggle={(i) => toggle(itemKey(cat, i))}
-                  category={cat}
-                />
+                <div className="border-border bg-muted/30 flex flex-col gap-2 rounded-md border border-dashed p-4 text-center">
+                  <p className="text-foreground text-sm">
+                    Nothing to suggest yet.
+                  </p>
+                  <p className="text-muted-foreground text-xs">
+                    The model couldn&apos;t find anything you&apos;re missing
+                    in this section. Try filling in more answers, then
+                    Regenerate — context grows the suggestions&apos; depth.
+                  </p>
+                </div>
               )
-            })}
-          </div>
+            }
+            return (
+              <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+                {(Object.keys(CATEGORY_LABELS) as Category[]).map((cat) => {
+                  const items = state.output[cat]
+                  return (
+                    <SuggestionCategory
+                      key={cat}
+                      label={CATEGORY_LABELS[cat]}
+                      items={items}
+                      selected={selected}
+                      onToggle={(i) => toggle(itemKey(cat, i))}
+                      category={cat}
+                    />
+                  )
+                })}
+              </div>
+            )
+          })()
         ) : null}
 
         {state.kind === "loaded" ? (

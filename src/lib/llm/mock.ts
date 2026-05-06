@@ -10,6 +10,8 @@ import type {
   CoachOutput,
   JudgeInput,
   JudgeOutput,
+  MergeInput,
+  MergeOutput,
   SuggestInput,
   SuggestOutput,
   SynthesizeInput,
@@ -68,7 +70,11 @@ export class MockProvider implements LLMProvider {
 
   async coach(input: CoachInput): Promise<CallResult<CoachOutput>> {
     const data: CoachOutput = {
-      rephrased_question: `Take another pass at: ${input.question_prompt}`,
+      targeted_questions: [
+        `Who specifically is affected — give a role and a rough count?`,
+        `What concretely breaks or is missing today (one example)?`,
+        `What changed recently that makes this worth solving now?`,
+      ],
       examples: [
         {
           context: "B2B SaaS onboarding flow",
@@ -81,15 +87,38 @@ export class MockProvider implements LLMProvider {
             "Engineering leads spend 30 minutes per release writing changelogs; the tool drafts them from merged PR titles.",
         },
       ],
-      follow_up:
-        "What concrete outcome would tell you this answer is precise enough?",
       encouragement:
-        "You're close — one more pass with a specific example will get you over the line.",
+        "You're close — fill in these few details and the merge will pull it together.",
     }
+    void input
     return {
       data,
       usage: usage(120, 200),
       model: `mock:${MODELS.coach}`,
+      promptVersion: PROMPT_VERSION,
+    }
+  }
+
+  async merge(input: MergeInput): Promise<CallResult<MergeOutput>> {
+    // Deterministic mock: append non-empty fill-ins onto the original
+    // draft as integrated sentences. Production uses Haiku.
+    const integrated = input.qa_pairs
+      .filter((p) => p.answer.trim().length > 0)
+      .map((p) => p.answer.trim())
+      .join(" ")
+    const revised = integrated
+      ? `${input.original_draft.trim()} ${integrated}`.trim()
+      : input.original_draft
+    const data: MergeOutput = {
+      revised_draft: revised,
+      change_summary: integrated
+        ? `Integrated ${input.qa_pairs.filter((p) => p.answer.trim()).length} fill-in answer(s).`
+        : "no changes — fill-ins were empty",
+    }
+    return {
+      data,
+      usage: usage(300 + input.original_draft.length / 4, 200),
+      model: `mock:${MODELS.merge}`,
       promptVersion: PROMPT_VERSION,
     }
   }

@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { llmCallLogs, projects } from "@/lib/db/schema"
 
-export type CallType = "judge" | "coach" | "suggester" | "synthesizer"
+export type CallType = "judge" | "coach" | "merge" | "suggester" | "synthesizer"
 
 export type PreflightInput = {
   projectId: number

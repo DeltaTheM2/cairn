@@ -3,26 +3,23 @@ import { beforeEach, describe, expect, it } from "vitest"
 
 import { db } from "@/lib/db"
 import { llmCallLogs, projects, rateLimitBuckets, users } from "@/lib/db/schema"
-import { callCoach } from "@/lib/llm/calls/coach"
 import { resetLLMProvider } from "@/lib/llm"
+import { callMerge } from "@/lib/llm/calls/merge"
 
 const U1 = {
-  id: "c-u1",
-  email: "c-u1@example.com",
+  id: "m-u1",
+  email: "m-u1@example.com",
   name: "U1",
   image: null,
 }
 
 const baseInput = {
-  doc_type: "prd",
-  section_title: "Vision & Problem",
   question_prompt: "What problem are we solving?",
-  user_answer: "tbd",
-  judge_score: 1,
-  judge_strengths: [],
-  judge_weaknesses: ["Too vague"],
-  judge_suggestions: ["Name the affected group concretely"],
-  revision_count: 1,
+  original_draft: "Engineers waste hours on docs.",
+  qa_pairs: [
+    { question: "How many engineers?", answer: "About 8 in our team." },
+    { question: "What's the trigger?", answer: "Onboarding a new hire." },
+  ],
 }
 
 beforeEach(async () => {
@@ -46,32 +43,24 @@ async function makeProject(opts?: { budget?: string; used?: string }) {
   return r.insertId
 }
 
-describe("callCoach", () => {
-  it("returns coach output, logs the call, and increments project cost", async () => {
+describe("callMerge", () => {
+  it("returns revised_draft + change_summary, logs the call, increments cost", async () => {
     const projectId = await makeProject()
-    const r = await callCoach(baseInput, {
+    const r = await callMerge(baseInput, {
       userId: U1.id,
       projectId,
       documentInstanceId: 1,
     })
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.data.targeted_questions.length).toBeGreaterThanOrEqual(2)
-    expect(r.data.targeted_questions.length).toBeLessThanOrEqual(4)
-    for (const q of r.data.targeted_questions) {
-      expect(q).toBeTruthy()
-    }
-    expect(r.data.examples.length).toBeGreaterThanOrEqual(2)
-    expect(r.data.examples.length).toBeLessThanOrEqual(3)
-    expect(r.data.encouragement).toBeTruthy()
-    for (const ex of r.data.examples) {
-      expect(ex.context).toBeTruthy()
-      expect(ex.answer).toBeTruthy()
-    }
+    expect(r.data.revised_draft.length).toBeGreaterThan(
+      baseInput.original_draft.length,
+    )
+    expect(r.data.change_summary).toBeTruthy()
 
     const logs = await db.select().from(llmCallLogs)
     expect(logs.length).toBe(1)
-    expect(logs[0].callType).toBe("coach")
+    expect(logs[0].callType).toBe("merge")
     expect(logs[0].status).toBe("ok")
     expect(Number(logs[0].costUsd)).toBeGreaterThan(0)
 
@@ -88,7 +77,7 @@ describe("callCoach", () => {
       budget: "0.00010",
       used: "0.00000",
     })
-    const r = await callCoach(baseInput, {
+    const r = await callMerge(baseInput, {
       userId: U1.id,
       projectId,
       documentInstanceId: 1,
@@ -101,16 +90,16 @@ describe("callCoach", () => {
     expect(logs[0].status).toBe("budget_exceeded")
   })
 
-  it("rate-limits after the per-call hourly cap (30 coach calls/hour)", async () => {
+  it("rate-limits after the per-call hourly cap (30 merge calls/hour)", async () => {
     const projectId = await makeProject({ budget: "100.0000" })
     const past = new Date(Date.now() - 5 * 60 * 1000)
     await db.insert(rateLimitBuckets).values({
       userId: U1.id,
-      bucketKey: "call:coach",
+      bucketKey: "call:merge",
       windowStart: past,
       count: 30,
     })
-    const r = await callCoach(baseInput, {
+    const r = await callMerge(baseInput, {
       userId: U1.id,
       projectId,
       documentInstanceId: 1,
@@ -121,5 +110,18 @@ describe("callCoach", () => {
 
     const logs = await db.select().from(llmCallLogs)
     expect(logs[0].status).toBe("rate_limited")
+  })
+
+  it("output validates the mergeOutputSchema (revised_draft non-empty)", async () => {
+    const projectId = await makeProject()
+    const r = await callMerge(baseInput, {
+      userId: U1.id,
+      projectId,
+      documentInstanceId: 1,
+    })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.data.revised_draft.length).toBeGreaterThan(0)
+    expect(r.data.revised_draft).toContain("8")
   })
 })

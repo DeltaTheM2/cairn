@@ -390,6 +390,7 @@ export const llmCallLogs = mysqlTable(
     callType: mysqlEnum("call_type", [
       "judge",
       "coach",
+      "merge",
       "suggester",
       "synthesizer",
     ]).notNull(),

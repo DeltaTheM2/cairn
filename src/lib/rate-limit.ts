@@ -7,6 +7,7 @@ import type { CallType } from "@/lib/cost-tracker"
 const HOUR_LIMITS: Record<CallType, number> = {
   judge: 60,
   coach: 30,
+  merge: 30,
   suggester: 20,
   synthesizer: 10,
 }

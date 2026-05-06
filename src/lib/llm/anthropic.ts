@@ -12,11 +12,14 @@ import type {
 import {
   coachOutputSchema,
   judgeOutputSchema,
+  mergeOutputSchema,
   suggesterOutputSchema,
   type CoachInput,
   type CoachOutput,
   type JudgeInput,
   type JudgeOutput,
+  type MergeInput,
+  type MergeOutput,
   type SuggestInput,
   type SuggestOutput,
   type SynthesizeInput,
@@ -26,8 +29,17 @@ const PROMPT_VERSION = "v1"
 
 const JUDGE_MAX_TOKENS = 400
 const COACH_MAX_TOKENS = 800
+const MERGE_MAX_TOKENS = 1500
 const SUGGEST_MAX_TOKENS = 2000
 const SYNTHESIZE_MAX_TOKENS = 6000
+
+function renderQaPairs(
+  pairs: ReadonlyArray<{ question: string; answer: string }>,
+): string {
+  return pairs
+    .map((p) => `Q: ${p.question}\nA: ${p.answer || "(skipped)"}`)
+    .join("\n\n")
+}
 
 function extractText(content: Anthropic.ContentBlock[]): string {
   for (const block of content) {
@@ -157,6 +169,35 @@ export class AnthropicProvider implements LLMProvider {
 
     const text = extractText(response.content)
     const data = suggesterOutputSchema.parse(extractJson(text))
+
+    return {
+      data,
+      usage: usageFrom(response.usage, latencyMs),
+      model: response.model,
+      promptVersion: PROMPT_VERSION,
+    }
+  }
+
+  async merge(input: MergeInput): Promise<CallResult<MergeOutput>> {
+    const prompt = loadPrompt("merge")
+    const userPrompt = interpolate(prompt.userTemplate, {
+      question_prompt: input.question_prompt,
+      original_draft: input.original_draft,
+      qa_pairs: renderQaPairs(input.qa_pairs),
+    })
+
+    const start = Date.now()
+    const response = await this.client.messages.create({
+      model: MODELS.merge,
+      max_tokens: MERGE_MAX_TOKENS,
+      temperature: 0.3,
+      system: prompt.system,
+      messages: [{ role: "user", content: userPrompt }],
+    })
+    const latencyMs = Date.now() - start
+
+    const text = extractText(response.content)
+    const data = mergeOutputSchema.parse(extractJson(text))
 
     return {
       data,

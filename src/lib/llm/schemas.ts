@@ -24,7 +24,7 @@ export type JudgeInput = z.infer<typeof judgeInputSchema>
 /* ---------------- Coach ---------------- */
 
 export const coachOutputSchema = z.object({
-  rephrased_question: z.string().max(500),
+  targeted_questions: z.array(z.string().max(300)).min(2).max(4),
   examples: z
     .array(
       z.object({
@@ -34,7 +34,6 @@ export const coachOutputSchema = z.object({
     )
     .min(2)
     .max(3),
-  follow_up: z.string().max(300),
   encouragement: z.string().max(200),
 })
 export type CoachOutput = z.infer<typeof coachOutputSchema>
@@ -51,6 +50,26 @@ export const coachInputSchema = z.object({
   revision_count: z.number(),
 })
 export type CoachInput = z.infer<typeof coachInputSchema>
+
+/* ---------------- Merge ---------------- */
+
+export const mergeOutputSchema = z.object({
+  revised_draft: z.string().min(1).max(8000),
+  change_summary: z.string().max(300),
+})
+export type MergeOutput = z.infer<typeof mergeOutputSchema>
+
+export const mergeInputSchema = z.object({
+  question_prompt: z.string(),
+  original_draft: z.string(),
+  qa_pairs: z.array(
+    z.object({
+      question: z.string(),
+      answer: z.string(),
+    }),
+  ),
+})
+export type MergeInput = z.infer<typeof mergeInputSchema>
 
 /* ---------------- Suggester ---------------- */
 

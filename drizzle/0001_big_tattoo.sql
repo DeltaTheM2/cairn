@@ -1,0 +1,1 @@
+ALTER TABLE `llm_call_logs` MODIFY COLUMN `call_type` enum('judge','coach','merge','suggester','synthesizer') NOT NULL;

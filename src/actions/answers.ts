@@ -14,9 +14,11 @@ import {
 } from "@/lib/db/schema"
 import { callCoach } from "@/lib/llm/calls/coach"
 import { callJudge } from "@/lib/llm/calls/judge"
-import type { CoachOutput, JudgeOutput } from "@/lib/llm/schemas"
+import { callMerge } from "@/lib/llm/calls/merge"
+import type { CoachOutput, JudgeOutput, MergeOutput } from "@/lib/llm/schemas"
 import { loadQuestionBank, type SupportedDocType } from "@/lib/question-bank"
 import {
+  mergeAnswerInputSchema,
   saveDraftInputSchema,
   submitAnswerInputSchema,
 } from "@/lib/validation/answers"
@@ -318,4 +320,73 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
       forcedComplete,
     },
   }
+}
+
+/**
+ * Merge a user's targeted-question fill-ins back into their draft.
+ *   load owned section + question prompt → callMerge → return revised
+ *   draft + change summary. No DB write — the user reviews the result
+ *   and submits explicitly via submitAnswer (which still rule-checks
+ *   and judges). Pure compute action.
+ */
+export async function mergeAnswer(
+  input: unknown,
+): Promise<Result<MergeOutput>> {
+  const user = await requireUser()
+  const parsed = mergeAnswerInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid" }
+  }
+
+  // Drop empty fill-ins; merge prompt skips them anyway but no point
+  // billing tokens on noise.
+  const filledPairs = parsed.data.qaPairs.filter(
+    (p) => p.answer.trim().length > 0,
+  )
+  if (filledPairs.length === 0) {
+    return { ok: false, error: "no_fill_ins" }
+  }
+
+  const section = await loadOwnedSection(
+    parsed.data.documentId,
+    parsed.data.sectionKey,
+    user.id,
+  )
+  if (!section) return { ok: false, error: "not_found" }
+
+  const bank = loadQuestionBank(section.docType as SupportedDocType)
+  const sectionDef = bank.sections.find((s) => s.key === parsed.data.sectionKey)
+  const questionDef = sectionDef?.questions.find(
+    (q) => q.key === parsed.data.questionKey,
+  )
+  if (!sectionDef || !questionDef) {
+    return { ok: false, error: "unknown_question" }
+  }
+
+  const result = await callMerge(
+    {
+      question_prompt: questionDef.prompt,
+      original_draft: parsed.data.originalDraft,
+      qa_pairs: filledPairs,
+    },
+    {
+      userId: user.id,
+      projectId: section.projectId,
+      documentInstanceId: parsed.data.documentId,
+    },
+  )
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error:
+        result.error === "rate_limited"
+          ? "Rate limit hit — try again in a few minutes."
+          : result.error === "budget_exceeded"
+            ? "Project LLM budget exceeded — bump cost_budget_usd to continue."
+            : "Merge failed; please retry.",
+    }
+  }
+
+  return { ok: true, data: result.data }
 }

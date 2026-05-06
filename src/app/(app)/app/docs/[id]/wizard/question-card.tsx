@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react"
 
-import { saveDraft, submitAnswer } from "@/actions/answers"
+import { mergeAnswer, saveDraft, submitAnswer } from "@/actions/answers"
 import type { AnswerFeedback } from "@/app/(app)/app/docs/[id]/wizard/wizard-shell"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -109,6 +109,9 @@ export function QuestionCard({
   const [coach, setCoach] = React.useState<CoachOutput | null>(null)
   const [revisionCount, setRevisionCount] = React.useState(0)
   const [forcedComplete, setForcedComplete] = React.useState(false)
+  const [mergeState, setMergeState] = React.useState<"idle" | "merging">("idle")
+  const [mergeError, setMergeError] = React.useState<string | null>(null)
+  const [mergeSummary, setMergeSummary] = React.useState<string | null>(null)
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedRef = React.useRef(initialDraft)
@@ -192,6 +195,40 @@ export function QuestionCard({
       isSoftWarned: result.data.isSoftWarned,
       score: result.data.judge.score,
       feedback: result.data.judge,
+    })
+  }
+
+  async function applyMerge(qaPairs: Array<{ question: string; answer: string }>) {
+    if (mergeState === "merging") return
+    setMergeError(null)
+    setMergeSummary(null)
+    setMergeState("merging")
+    const result = await mergeAnswer({
+      documentId,
+      sectionKey,
+      questionKey: question.key,
+      originalDraft: text,
+      qaPairs,
+    })
+    setMergeState("idle")
+    if (!result.ok) {
+      setMergeError(result.error)
+      return
+    }
+    // Replace the textarea content with the merged draft. The user can
+    // edit further before submitting; submit re-runs the judge.
+    setText(result.data.revised_draft)
+    setMergeSummary(result.data.change_summary)
+    setSubmittedText("")
+    setSaveState("idle")
+    // Clear coach so the form collapses; the next failing submit (if
+    // any) will produce a fresh coach call with new targeted questions.
+    setCoach(null)
+    lastSavedRef.current = ""
+    onDraftSaved({
+      sectionKey,
+      questionKey: question.key,
+      draftText: result.data.revised_draft,
     })
   }
 
@@ -286,20 +323,30 @@ export function QuestionCard({
         </div>
       </div>
 
-      {feedback && isSubmitted ? (
+      {feedback && score !== null ? (
         <FeedbackPanel
           feedback={feedback}
-          score={score ?? 0}
+          score={score}
           open={feedbackOpen}
           onToggle={() => setFeedbackOpen((o) => !o)}
         />
       ) : null}
 
+      {mergeSummary ? (
+        <p className="text-muted-foreground text-xs">
+          ✨ Revised — {mergeSummary} Review and submit.
+        </p>
+      ) : null}
+
       {coach && !questionComplete ? (
         <CoachPanel
+          key={revisionCount}
           coach={coach}
           revisionCount={revisionCount}
           maxIterations={MAX_COACH_ITERATIONS}
+          onApply={applyMerge}
+          merging={mergeState === "merging"}
+          mergeError={mergeError}
         />
       ) : null}
 
@@ -363,14 +410,49 @@ function CoachPanel({
   coach,
   revisionCount,
   maxIterations,
+  onApply,
+  merging,
+  mergeError,
 }: {
   coach: CoachOutput
   revisionCount: number
   maxIterations: number
+  onApply: (
+    qaPairs: Array<{ question: string; answer: string }>,
+  ) => Promise<void>
+  merging: boolean
+  mergeError: string | null
 }) {
+  // No reset effect needed — the parent gives us a key based on
+  // revisionCount, so when coach swaps the whole component remounts
+  // and the initial state below is recomputed.
+  const [answers, setAnswers] = React.useState<string[]>(() =>
+    coach.targeted_questions.map(() => ""),
+  )
+  const [examplesOpen, setExamplesOpen] = React.useState(false)
+
+  const filledCount = answers.filter((a) => a.trim().length > 0).length
+
+  function setAnswerAt(index: number, value: string) {
+    setAnswers((prev) => {
+      const next = [...prev]
+      next[index] = value
+      return next
+    })
+  }
+
+  async function onRevise() {
+    if (filledCount === 0 || merging) return
+    const qaPairs = coach.targeted_questions.map((q, i) => ({
+      question: q,
+      answer: answers[i] ?? "",
+    }))
+    await onApply(qaPairs)
+  }
+
   return (
     <div className="border-foreground/20 bg-muted/40 flex flex-col gap-3 rounded-md border p-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="text-foreground text-xs font-medium">
           Coach · attempt {revisionCount} of {maxIterations}
         </div>
@@ -381,37 +463,82 @@ function CoachPanel({
         ) : null}
       </div>
 
-      <div>
+      <div className="flex flex-col gap-2">
         <div className="text-muted-foreground text-xs uppercase tracking-wider">
-          Try this rephrasing
+          Fill in the missing details
         </div>
-        <p className="text-foreground mt-1 text-sm">
-          {coach.rephrased_question}
+        <p className="text-muted-foreground text-xs">
+          Answer any (or all). Click <strong>Revise</strong> and the AI
+          will weave your answers into your draft. Empty boxes are skipped.
         </p>
-      </div>
-
-      <div>
-        <div className="text-muted-foreground text-xs uppercase tracking-wider">
-          Examples (don&apos;t copy — calibrate)
-        </div>
-        <ul className="mt-1 flex flex-col gap-2">
-          {coach.examples.map((ex, i) => (
-            <li
-              key={i}
-              className="border-border bg-background rounded-md border p-2 text-xs"
-            >
-              <div className="text-muted-foreground italic">{ex.context}</div>
-              <p className="text-foreground mt-1">{ex.answer}</p>
+        <ul className="flex flex-col gap-2">
+          {coach.targeted_questions.map((q, i) => (
+            <li key={i} className="flex flex-col gap-1">
+              <label
+                htmlFor={`coach-q-${i}`}
+                className="text-foreground text-xs"
+              >
+                {q}
+              </label>
+              <Textarea
+                id={`coach-q-${i}`}
+                value={answers[i] ?? ""}
+                onChange={(e) => setAnswerAt(i, e.target.value)}
+                placeholder="A short answer is fine — 1–2 sentences."
+                rows={2}
+                disabled={merging}
+              />
             </li>
           ))}
         </ul>
       </div>
 
-      <div>
-        <div className="text-muted-foreground text-xs uppercase tracking-wider">
-          Follow-up to consider
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-muted-foreground text-xs">
+          {filledCount}/{coach.targeted_questions.length} filled
+        </span>
+        <div className="flex items-center gap-2">
+          {mergeError ? (
+            <span className="text-destructive text-xs">{mergeError}</span>
+          ) : null}
+          <Button
+            type="button"
+            onClick={onRevise}
+            disabled={filledCount === 0 || merging}
+          >
+            {merging ? "Revising…" : "Revise with these answers"}
+          </Button>
         </div>
-        <p className="text-foreground mt-1 text-sm">{coach.follow_up}</p>
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={() => setExamplesOpen((o) => !o)}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+          aria-expanded={examplesOpen}
+        >
+          {examplesOpen ? (
+            <ChevronUp className="h-3 w-3" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+          {examplesOpen ? "Hide" : "Show"} {coach.examples.length} calibration
+          example{coach.examples.length === 1 ? "" : "s"}
+        </button>
+        {examplesOpen ? (
+          <ul className="mt-2 flex flex-col gap-2">
+            {coach.examples.map((ex, i) => (
+              <li
+                key={i}
+                className="border-border bg-background rounded-md border p-2 text-xs"
+              >
+                <div className="text-muted-foreground italic">{ex.context}</div>
+                <p className="text-foreground mt-1">{ex.answer}</p>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   )

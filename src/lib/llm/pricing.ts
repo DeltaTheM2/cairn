@@ -21,6 +21,7 @@ export type SupportedModel = keyof typeof PRICING
 export const MODELS = {
   judge: "claude-haiku-4-5",
   coach: "claude-haiku-4-5",
+  merge: "claude-haiku-4-5",
   suggester: "claude-sonnet-4-6",
   synthesizer: "claude-sonnet-4-6",
 } as const satisfies Record<string, SupportedModel>

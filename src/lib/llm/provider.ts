@@ -3,6 +3,8 @@ import type {
   CoachOutput,
   JudgeInput,
   JudgeOutput,
+  MergeInput,
+  MergeOutput,
   SuggestInput,
   SuggestOutput,
   SynthesizeInput,
@@ -39,6 +41,7 @@ export interface LLMProvider {
   judge(input: JudgeInput): Promise<CallResult<JudgeOutput>>
   coach(input: CoachInput): Promise<CallResult<CoachOutput>>
   suggest(input: SuggestInput): Promise<CallResult<SuggestOutput>>
+  merge(input: MergeInput): Promise<CallResult<MergeOutput>>
   synthesize(
     input: SynthesizeInput,
     signal?: AbortSignal,

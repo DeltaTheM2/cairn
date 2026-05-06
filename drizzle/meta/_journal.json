@@ -8,6 +8,13 @@
       "when": 1777170263575,
       "tag": "0000_silent_lady_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1778101642893,
+      "tag": "0001_big_tattoo",
+      "breakpoints": true
     }
   ]
 }

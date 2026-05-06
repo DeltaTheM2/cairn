@@ -18,10 +18,20 @@ const baseInput = {
   section_title: "Vision & Problem",
   question_prompt: "What problem are we solving?",
   user_answer: "tbd",
-  judge_score: 1,
-  judge_strengths: [],
-  judge_weaknesses: ["Too vague"],
-  judge_suggestions: ["Name the affected group concretely"],
+  failed_criteria: [
+    {
+      key: "names_affected_group",
+      label: "Names a concrete affected group",
+      hint: "A specific role / team / persona, not 'users'",
+      why_not: "No group named",
+    },
+    {
+      key: "specific_pain_point",
+      label: "Describes a specific pain point with an example",
+      hint: "One concrete example of what's broken",
+      why_not: "Answer is just 'tbd'",
+    },
+  ],
   revision_count: 1,
 }
 
@@ -56,13 +66,18 @@ describe("callCoach", () => {
     })
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.data.targeted_questions.length).toBeGreaterThanOrEqual(2)
-    expect(r.data.targeted_questions.length).toBeLessThanOrEqual(4)
+    // One targeted question per failed criterion; each binds a
+    // criterion_key that appears in the input.
+    expect(r.data.targeted_questions.length).toBeGreaterThanOrEqual(1)
+    expect(r.data.targeted_questions.length).toBeLessThanOrEqual(
+      baseInput.failed_criteria.length,
+    )
+    const inputKeys = baseInput.failed_criteria.map((c) => c.key)
     for (const q of r.data.targeted_questions) {
-      expect(q).toBeTruthy()
+      expect(q.question).toBeTruthy()
+      expect(inputKeys).toContain(q.criterion_key)
     }
-    expect(r.data.examples.length).toBeGreaterThanOrEqual(2)
-    expect(r.data.examples.length).toBeLessThanOrEqual(3)
+    expect(r.data.examples.length).toBeGreaterThanOrEqual(1)
     expect(r.data.encouragement).toBeTruthy()
     for (const ex of r.data.examples) {
       expect(ex.context).toBeTruthy()

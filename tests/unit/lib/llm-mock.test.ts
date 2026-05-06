@@ -11,7 +11,18 @@ const baseJudgeInput = {
   doc_type: "prd",
   section_title: "Vision & Problem",
   question_prompt: "What problem are we solving?",
-  question_rubric: "...",
+  question_criteria: [
+    {
+      key: "names_affected_group",
+      label: "Names a concrete affected group",
+      hint: "Specific role / team / persona — not 'users'",
+    },
+    {
+      key: "specific_pain_point",
+      label: "Describes a specific pain point with an example",
+      hint: "Concrete example of what's broken today",
+    },
+  ],
   question_examples: ["good 1", "good 2"],
   user_answer: "",
 }
@@ -19,51 +30,58 @@ const baseJudgeInput = {
 describe("MockProvider.judge", () => {
   const provider = new MockProvider()
 
-  it("returns score 1 for empty / very short answers", async () => {
+  it("returns score 1 + every criterion unmet for empty/short answers", async () => {
     const r = await provider.judge({
       ...baseJudgeInput,
       user_answer: "tbd",
     })
     expect(r.data.score).toBe(1)
+    expect(r.data.criteria.every((c) => !c.met)).toBe(true)
     expect(judgeOutputSchema.safeParse(r.data).success).toBe(true)
   })
 
-  it("returns score 5 for long, substantive answers", async () => {
-    const long = "x".repeat(400)
+  it("output validates the judgeOutputSchema for long answers", async () => {
+    const long =
+      "Mid-market sales managers (10-50 person teams) currently move leads through a Slack channel; we replace the channel with a structured pipeline view. " +
+      "Concrete example: when a deal stalls, the manager has no record of which step it stalled at, so handover takes hours."
     const r = await provider.judge({
       ...baseJudgeInput,
       user_answer: long,
     })
-    expect(r.data.score).toBe(5)
-    expect(r.data.strengths.length).toBeGreaterThan(0)
-  })
-
-  it("returns score 3 for mid-length answers", async () => {
-    const mid = "x".repeat(100)
-    const r = await provider.judge({
-      ...baseJudgeInput,
-      user_answer: mid,
-    })
-    expect(r.data.score).toBe(3)
+    expect(judgeOutputSchema.safeParse(r.data).success).toBe(true)
+    expect(r.data.criteria.length).toBe(baseJudgeInput.question_criteria.length)
   })
 })
 
 describe("MockProvider.coach", () => {
-  it("returns a coach output that matches the schema", async () => {
+  it("returns one targeted question per failed criterion with criterion_key", async () => {
     const provider = new MockProvider()
+    const failed = [
+      {
+        key: "names_affected_group",
+        label: "Names a concrete affected group",
+        hint: "Specific role / team / persona",
+        why_not: "Generic 'users'",
+      },
+      {
+        key: "specific_pain_point",
+        label: "Describes a specific pain point with an example",
+        hint: "Concrete example",
+        why_not: "No example given",
+      },
+    ]
     const r = await provider.coach({
       doc_type: "prd",
       section_title: "Vision & Problem",
       question_prompt: "What problem are we solving?",
       user_answer: "stuff",
-      judge_score: 2,
-      judge_strengths: [],
-      judge_weaknesses: ["too vague"],
-      judge_suggestions: ["be specific"],
+      failed_criteria: failed,
       revision_count: 1,
     })
     expect(coachOutputSchema.safeParse(r.data).success).toBe(true)
-    expect(r.data.examples.length).toBeGreaterThanOrEqual(2)
+    expect(r.data.targeted_questions.length).toBe(failed.length)
+    const keys = r.data.targeted_questions.map((q) => q.criterion_key)
+    for (const f of failed) expect(keys).toContain(f.key)
   })
 })
 

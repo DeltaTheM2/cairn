@@ -10,12 +10,27 @@ export const questionRulesSchema = z
   })
   .strict()
 
+export const criterionSchema = z
+  .object({
+    key: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(
+        /^[a-z][a-z0-9_]*$/,
+        "criterion key must be snake_case (lowercase, digits, underscores)",
+      ),
+    label: z.string().min(3).max(140),
+    hint: z.string().min(3).max(280),
+  })
+  .strict()
+
 export const questionSchema = z
   .object({
     key: z.string().min(1).max(64),
     prompt: z.string().min(1),
     rules: questionRulesSchema.default({}),
-    rubric: z.string().min(1),
+    criteria: z.array(criterionSchema).min(1).max(8),
     examples: z.array(z.string()).default([]),
   })
   .strict()
@@ -41,6 +56,7 @@ export const questionBankSchema = z
   .strict()
 
 export type QuestionRules = z.infer<typeof questionRulesSchema>
+export type Criterion = z.infer<typeof criterionSchema>
 export type Question = z.infer<typeof questionSchema>
 export type Section = z.infer<typeof sectionSchema>
 export type QuestionBank = z.infer<typeof questionBankSchema>

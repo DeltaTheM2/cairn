@@ -3,9 +3,12 @@
 import * as React from "react"
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Circle,
+  X,
   XCircle,
 } from "lucide-react"
 
@@ -121,6 +124,12 @@ export function QuestionCard({
   const questionComplete =
     isSubmitted && isAnswerComplete({ adequacyScore: score, isSoftWarned })
 
+  const criteriaByKey = React.useMemo(() => {
+    const m = new Map<string, CriterionDef>()
+    for (const c of question.criteria) m.set(c.key, c)
+    return m
+  }, [question.criteria])
+
   React.useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -198,7 +207,14 @@ export function QuestionCard({
     })
   }
 
-  async function applyMerge(qaPairs: Array<{ question: string; answer: string }>) {
+  async function applyMerge(
+    qaPairs: Array<{
+      criterion_key: string
+      criterion_label: string
+      question: string
+      answer: string
+    }>,
+  ) {
     if (mergeState === "merging") return
     setMergeError(null)
     setMergeSummary(null)
@@ -323,14 +339,13 @@ export function QuestionCard({
         </div>
       </div>
 
-      {feedback && score !== null ? (
-        <FeedbackPanel
-          feedback={feedback}
-          score={score}
-          open={feedbackOpen}
-          onToggle={() => setFeedbackOpen((o) => !o)}
-        />
-      ) : null}
+      <CriteriaChecklist
+        criteria={question.criteria}
+        verdicts={feedback?.criteria ?? null}
+        oneLineVerdict={feedback?.oneLineVerdict}
+        open={feedbackOpen}
+        onToggle={() => setFeedbackOpen((o) => !o)}
+      />
 
       {mergeSummary ? (
         <p className="text-muted-foreground text-xs">
@@ -347,6 +362,7 @@ export function QuestionCard({
           onApply={applyMerge}
           merging={mergeState === "merging"}
           mergeError={mergeError}
+          criteriaByKey={criteriaByKey}
         />
       ) : null}
 
@@ -361,26 +377,45 @@ export function QuestionCard({
   )
 }
 
-function FeedbackPanel({
-  feedback,
-  score,
+type CriterionDef = {
+  key: string
+  label: string
+  hint: string
+}
+
+type CriterionVerdict = {
+  key: string
+  met: boolean
+  why_not?: string
+}
+
+function CriteriaChecklist({
+  criteria,
+  verdicts,
+  oneLineVerdict,
   open,
   onToggle,
 }: {
-  feedback: AnswerFeedback
-  score: number
+  criteria: ReadonlyArray<CriterionDef>
+  verdicts: ReadonlyArray<CriterionVerdict> | null
+  oneLineVerdict: string | undefined
   open: boolean
   onToggle: () => void
 }) {
-  const tone =
-    score >= 4
+  if (criteria.length === 0) return null
+  const verdictByKey = new Map<string, CriterionVerdict>()
+  if (verdicts) for (const v of verdicts) verdictByKey.set(v.key, v)
+  const judged = verdicts !== null
+  const allMet = judged && criteria.every((c) => verdictByKey.get(c.key)?.met)
+
+  const tone = !judged
+    ? "border-border bg-muted/30"
+    : allMet
       ? "border-foreground/20 bg-muted/40"
-      : score === 3
-        ? "border-amber-500/30 bg-amber-500/5"
-        : "border-destructive/30 bg-destructive/5"
+      : "border-amber-500/30 bg-amber-500/5"
 
   return (
-    <div className={cn("rounded-md border p-3", tone)}>
+    <div className={cn("flex flex-col gap-2 rounded-md border p-3", tone)}>
       <button
         type="button"
         onClick={onToggle}
@@ -392,15 +427,46 @@ function FeedbackPanel({
         ) : (
           <ChevronDown className="h-3 w-3" />
         )}
-        Judge feedback
+        {judged
+          ? `What a strong answer needs · ${criteria.filter((c) => verdictByKey.get(c.key)?.met).length}/${criteria.length} met`
+          : "What a strong answer needs"}
       </button>
-      <p className="text-foreground mt-2 text-sm">{feedback.oneLineVerdict}</p>
+      {judged && oneLineVerdict ? (
+        <p className="text-foreground text-sm">{oneLineVerdict}</p>
+      ) : null}
       {open ? (
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <FeedbackList label="Strengths" items={feedback.strengths} />
-          <FeedbackList label="Weaknesses" items={feedback.weaknesses} />
-          <FeedbackList label="Suggestions" items={feedback.suggestions} />
-        </div>
+        <ul className="mt-1 flex flex-col gap-2">
+          {criteria.map((c) => {
+            const v = verdictByKey.get(c.key)
+            const Icon = !v ? Circle : v.met ? Check : X
+            const iconTone = !v
+              ? "text-muted-foreground"
+              : v.met
+                ? "text-foreground"
+                : "text-amber-700 dark:text-amber-400"
+            return (
+              <li key={c.key} className="flex items-start gap-2">
+                <Icon
+                  className={cn("mt-0.5 h-4 w-4 shrink-0", iconTone)}
+                  aria-hidden
+                />
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-foreground text-xs font-medium">
+                    {c.label}
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    {c.hint}
+                  </span>
+                  {v && !v.met && v.why_not ? (
+                    <span className="text-amber-700 dark:text-amber-400 mt-0.5 text-xs italic">
+                      Judge: {v.why_not}
+                    </span>
+                  ) : null}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
       ) : null}
     </div>
   )
@@ -413,15 +479,22 @@ function CoachPanel({
   onApply,
   merging,
   mergeError,
+  criteriaByKey,
 }: {
   coach: CoachOutput
   revisionCount: number
   maxIterations: number
   onApply: (
-    qaPairs: Array<{ question: string; answer: string }>,
+    qaPairs: Array<{
+      criterion_key: string
+      criterion_label: string
+      question: string
+      answer: string
+    }>,
   ) => Promise<void>
   merging: boolean
   mergeError: string | null
+  criteriaByKey: Map<string, CriterionDef>
 }) {
   // No reset effect needed — the parent gives us a key based on
   // revisionCount, so when coach swaps the whole component remounts
@@ -443,10 +516,15 @@ function CoachPanel({
 
   async function onRevise() {
     if (filledCount === 0 || merging) return
-    const qaPairs = coach.targeted_questions.map((q, i) => ({
-      question: q,
-      answer: answers[i] ?? "",
-    }))
+    const qaPairs = coach.targeted_questions.map((tq, i) => {
+      const def = criteriaByKey.get(tq.criterion_key)
+      return {
+        criterion_key: tq.criterion_key,
+        criterion_label: def?.label ?? tq.criterion_key,
+        question: tq.question,
+        answer: answers[i] ?? "",
+      }
+    })
     await onApply(qaPairs)
   }
 
@@ -472,24 +550,32 @@ function CoachPanel({
           will weave your answers into your draft. Empty boxes are skipped.
         </p>
         <ul className="flex flex-col gap-2">
-          {coach.targeted_questions.map((q, i) => (
-            <li key={i} className="flex flex-col gap-1">
-              <label
-                htmlFor={`coach-q-${i}`}
-                className="text-foreground text-xs"
-              >
-                {q}
-              </label>
-              <Textarea
-                id={`coach-q-${i}`}
-                value={answers[i] ?? ""}
-                onChange={(e) => setAnswerAt(i, e.target.value)}
-                placeholder="A short answer is fine — 1–2 sentences."
-                rows={2}
-                disabled={merging}
-              />
-            </li>
-          ))}
+          {coach.targeted_questions.map((tq, i) => {
+            const def = criteriaByKey.get(tq.criterion_key)
+            return (
+              <li key={i} className="flex flex-col gap-1">
+                <label
+                  htmlFor={`coach-q-${i}`}
+                  className="text-foreground text-xs font-medium"
+                >
+                  {tq.question}
+                </label>
+                {def ? (
+                  <span className="text-muted-foreground text-[11px]">
+                    Targets: {def.label}
+                  </span>
+                ) : null}
+                <Textarea
+                  id={`coach-q-${i}`}
+                  value={answers[i] ?? ""}
+                  onChange={(e) => setAnswerAt(i, e.target.value)}
+                  placeholder="A short answer is fine — 1–2 sentences."
+                  rows={2}
+                  disabled={merging}
+                />
+              </li>
+            )
+          })}
         </ul>
       </div>
 
@@ -544,29 +630,3 @@ function CoachPanel({
   )
 }
 
-function FeedbackList({ label, items }: { label: string; items: string[] }) {
-  if (items.length === 0) {
-    return (
-      <div>
-        <div className="text-muted-foreground text-xs uppercase tracking-wider">
-          {label}
-        </div>
-        <p className="text-muted-foreground mt-1 text-xs italic">none</p>
-      </div>
-    )
-  }
-  return (
-    <div>
-      <div className="text-muted-foreground text-xs uppercase tracking-wider">
-        {label}
-      </div>
-      <ul className="mt-1 flex flex-col gap-1">
-        {items.map((it, i) => (
-          <li key={i} className="text-foreground text-xs">
-            • {it}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}

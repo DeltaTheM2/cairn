@@ -234,9 +234,12 @@ export const sections = mysqlTable(
 )
 
 export type JudgeFeedback = {
-  strengths: string[]
-  weaknesses: string[]
-  suggestions: string[]
+  score: number
+  criteria: Array<{
+    key: string
+    met: boolean
+    why_not?: string
+  }>
   oneLineVerdict: string
 }
 

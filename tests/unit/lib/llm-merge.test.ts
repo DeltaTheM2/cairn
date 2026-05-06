@@ -17,8 +17,18 @@ const baseInput = {
   question_prompt: "What problem are we solving?",
   original_draft: "Engineers waste hours on docs.",
   qa_pairs: [
-    { question: "How many engineers?", answer: "About 8 in our team." },
-    { question: "What's the trigger?", answer: "Onboarding a new hire." },
+    {
+      criterion_key: "names_affected_group",
+      criterion_label: "Names a concrete affected group",
+      question: "How many engineers?",
+      answer: "About 8 in our team.",
+    },
+    {
+      criterion_key: "triggering_event",
+      criterion_label: "Names a triggering event",
+      question: "What's the trigger?",
+      answer: "Onboarding a new hire.",
+    },
   ],
 }
 

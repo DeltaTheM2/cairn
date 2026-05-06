@@ -17,7 +17,18 @@ const baseInput = {
   doc_type: "prd",
   section_title: "Vision & Problem",
   question_prompt: "What problem are we solving?",
-  question_rubric: "Be specific about who is affected and what's broken.",
+  question_criteria: [
+    {
+      key: "names_affected_group",
+      label: "Names a concrete affected group",
+      hint: "Identifies a specific role, team, or persona — not 'users'",
+    },
+    {
+      key: "specific_pain_point",
+      label: "Describes a specific pain point with an example",
+      hint: "Concrete example of what's broken today",
+    },
+  ],
   question_examples: ["good answer 1"],
   user_answer: "",
 }
@@ -52,7 +63,7 @@ describe("callJudge", () => {
     )
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.data.score).toBe(5)
+    expect(r.data.criteria.length).toBe(baseInput.question_criteria.length)
     expect(r.data.one_line_verdict).toBeTruthy()
 
     const logs = await db.select().from(llmCallLogs)
@@ -107,23 +118,20 @@ describe("callJudge", () => {
     expect(logs[0].status).toBe("rate_limited")
   })
 
-  it("output shape matches the judgeOutputSchema", async () => {
+  it("returns one verdict per criterion with met/why_not fields", async () => {
     const projectId = await makeProject()
-    const cases = [
-      { user_answer: "tbd", expectedScore: 1 },
-      { user_answer: "x".repeat(50), expectedScore: 2 },
-      { user_answer: "x".repeat(100), expectedScore: 3 },
-      { user_answer: "x".repeat(200), expectedScore: 4 },
-      { user_answer: "x".repeat(400), expectedScore: 5 },
-    ]
-    for (const c of cases) {
-      const r = await callJudge(
-        { ...baseInput, user_answer: c.user_answer },
-        { userId: U1.id, projectId, documentInstanceId: 1 },
-      )
-      expect(r.ok).toBe(true)
-      if (!r.ok) continue
-      expect(r.data.score).toBe(c.expectedScore)
+    const r = await callJudge(
+      { ...baseInput, user_answer: "tbd" },
+      { userId: U1.id, projectId, documentInstanceId: 1 },
+    )
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.data.criteria.length).toBe(baseInput.question_criteria.length)
+    // For "tbd" (very short), every criterion is unmet with a why_not.
+    for (const c of r.data.criteria) {
+      expect(c.met).toBe(false)
+      expect(c.why_not).toBeTruthy()
     }
+    expect(r.data.score).toBe(1)
   })
 })

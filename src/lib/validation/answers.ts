@@ -22,12 +22,14 @@ export const mergeAnswerInputSchema = z.object({
   qaPairs: z
     .array(
       z.object({
-        question: z.string().min(1).max(300),
+        criterion_key: z.string().min(1).max(64),
+        criterion_label: z.string().min(1).max(140),
+        question: z.string().min(1).max(500),
         answer: z.string().max(2000),
       }),
     )
     .min(1)
-    .max(4),
+    .max(8),
 })
 
 export type SaveDraftInput = z.infer<typeof saveDraftInputSchema>

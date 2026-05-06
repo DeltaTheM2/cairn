@@ -34,10 +34,18 @@ const SUGGEST_MAX_TOKENS = 2000
 const SYNTHESIZE_MAX_TOKENS = 6000
 
 function renderQaPairs(
-  pairs: ReadonlyArray<{ question: string; answer: string }>,
+  pairs: ReadonlyArray<{
+    criterion_key: string
+    criterion_label: string
+    question: string
+    answer: string
+  }>,
 ): string {
   return pairs
-    .map((p) => `Q: ${p.question}\nA: ${p.answer || "(skipped)"}`)
+    .map(
+      (p) =>
+        `[criterion: ${p.criterion_label}]\nQ: ${p.question}\nA: ${p.answer || "(skipped)"}`,
+    )
     .join("\n\n")
 }
 
@@ -74,7 +82,9 @@ export class AnthropicProvider implements LLMProvider {
       doc_type: input.doc_type,
       section_title: input.section_title,
       question_prompt: input.question_prompt,
-      question_rubric: input.question_rubric,
+      question_criteria: input.question_criteria
+        .map((c) => `- key: ${c.key}\n  label: ${c.label}\n  hint: ${c.hint}`)
+        .join("\n\n"),
       question_examples: input.question_examples
         .map((e, i) => `${i + 1}. ${e}`)
         .join("\n"),
@@ -118,10 +128,17 @@ export class AnthropicProvider implements LLMProvider {
       section_title: input.section_title,
       question_prompt: input.question_prompt,
       user_answer: input.user_answer,
-      judge_score: input.judge_score,
-      judge_strengths: input.judge_strengths.join("; ") || "(none)",
-      judge_weaknesses: input.judge_weaknesses.join("; ") || "(none)",
-      judge_suggestions: input.judge_suggestions.join("; ") || "(none)",
+      failed_criteria: input.failed_criteria
+        .map((c) => {
+          const lines = [
+            `- key: ${c.key}`,
+            `  label: ${c.label}`,
+            `  hint: ${c.hint}`,
+          ]
+          if (c.why_not) lines.push(`  why_not: ${c.why_not}`)
+          return lines.join("\n")
+        })
+        .join("\n\n"),
       revision_count: input.revision_count,
     })
 

@@ -35,29 +35,55 @@ export class MockProvider implements LLMProvider {
   async judge(input: JudgeInput): Promise<CallResult<JudgeOutput>> {
     const trimmed = input.user_answer.trim()
     const len = trimmed.length
+    const lower = trimmed.toLowerCase()
+
+    // Heuristic per-criterion verdict: a criterion is "met" if (a) the
+    // answer is reasonably long AND (b) at least one keyword from the
+    // criterion's label or hint appears in the answer. Empty / very
+    // short answers fail every criterion. Production replaces this
+    // with a real Haiku call.
+    const criteria = input.question_criteria.map((c) => {
+      if (len < 30) {
+        return {
+          key: c.key,
+          met: false,
+          why_not: "Answer is too short to evaluate.",
+        }
+      }
+      const words = (c.label + " " + c.hint)
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 5)
+      const hit = words.some((w) => lower.includes(w))
+      if (hit) return { key: c.key, met: true }
+      return {
+        key: c.key,
+        met: false,
+        why_not: `Answer doesn't seem to address: ${c.label.toLowerCase()}.`,
+      }
+    })
+
+    const metCount = criteria.filter((c) => c.met).length
+    const ratio = criteria.length > 0 ? metCount / criteria.length : 0
     const score: 1 | 2 | 3 | 4 | 5 =
-      len < 30 ? 1 : len < 80 ? 2 : len < 150 ? 3 : len < 300 ? 4 : 5
+      ratio >= 1
+        ? 5
+        : ratio >= 0.75
+          ? 4
+          : ratio >= 0.5
+            ? 3
+            : ratio >= 0.25
+              ? 2
+              : 1
 
     const data: JudgeOutput = {
       score,
-      strengths:
-        score >= 4
-          ? ["Specific and grounded", "Reads as project-aware"]
-          : score === 3
-            ? ["Addresses the question"]
-            : [],
-      weaknesses:
-        score < 4
-          ? ["Could include more concrete detail", "Generic phrasing in places"]
-          : [],
-      suggestions:
-        score < 4 ? ["Add a concrete example", "Quantify where possible"] : [],
+      criteria,
       one_line_verdict:
-        score >= 4
-          ? "Strong, specific answer"
-          : score === 3
-            ? "Borderline — revise for specificity"
-            : "Needs more substance",
+        metCount === criteria.length
+          ? "All criteria met."
+          : `${metCount} of ${criteria.length} criteria met — revise the missing ones.`,
     }
 
     return {
@@ -69,12 +95,14 @@ export class MockProvider implements LLMProvider {
   }
 
   async coach(input: CoachInput): Promise<CallResult<CoachOutput>> {
+    // One targeted question per failed criterion, derived from the
+    // criterion's label. Production Haiku reads `failed_criteria.hint`
+    // + `why_not` and writes a more grounded question.
     const data: CoachOutput = {
-      targeted_questions: [
-        `Who specifically is affected — give a role and a rough count?`,
-        `What concretely breaks or is missing today (one example)?`,
-        `What changed recently that makes this worth solving now?`,
-      ],
+      targeted_questions: input.failed_criteria.map((c) => ({
+        criterion_key: c.key,
+        question: `In one sentence: ${c.label.toLowerCase()}. ${c.hint}`,
+      })),
       examples: [
         {
           context: "B2B SaaS onboarding flow",
@@ -88,9 +116,8 @@ export class MockProvider implements LLMProvider {
         },
       ],
       encouragement:
-        "You're close — fill in these few details and the merge will pull it together.",
+        "You're close — fill in these specifics and the merge will pull it together.",
     }
-    void input
     return {
       data,
       usage: usage(120, 200),

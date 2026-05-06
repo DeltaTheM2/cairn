@@ -24,6 +24,7 @@ import {
 } from "@/lib/validation/answers"
 import { isAnswerComplete } from "@/lib/wizard/answer-status"
 import { ruleCheck } from "@/lib/wizard/rule-check"
+import { failedCriteria, scoreFromCriteria } from "@/lib/wizard/score"
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -86,7 +87,9 @@ export async function saveDraft(input: unknown): Promise<Result<null>> {
   return { ok: true, data: null }
 }
 
-export type SubmitFeedback = JudgeFeedback & { score: 1 | 2 | 3 | 4 | 5 }
+export type SubmitFeedback = Omit<JudgeFeedback, "score"> & {
+  score: 1 | 2 | 3 | 4 | 5
+}
 
 export type SubmitCoach = CoachOutput
 
@@ -102,12 +105,19 @@ type SubmitResult = Result<{
 
 const MAX_COACH_ITERATIONS = 3
 
-function feedbackFor(score: number, output: JudgeOutput): SubmitFeedback {
+/**
+ * Server-side score is derived from criteria coverage (the source of
+ * truth) — the LLM emits its own score for sanity-check logging only.
+ */
+function feedbackFor(output: JudgeOutput): SubmitFeedback {
+  const score = scoreFromCriteria(output.criteria)
   return {
-    score: score as 1 | 2 | 3 | 4 | 5,
-    strengths: output.strengths,
-    weaknesses: output.weaknesses,
-    suggestions: output.suggestions,
+    score,
+    criteria: output.criteria.map((c) => ({
+      key: c.key,
+      met: c.met,
+      why_not: c.why_not,
+    })),
     oneLineVerdict: output.one_line_verdict,
   }
 }
@@ -164,7 +174,11 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
       doc_type: section.docType,
       section_title: sectionDef.title,
       question_prompt: questionDef.prompt,
-      question_rubric: questionDef.rubric,
+      question_criteria: questionDef.criteria.map((c) => ({
+        key: c.key,
+        label: c.label,
+        hint: c.hint,
+      })),
       question_examples: questionDef.examples,
       user_answer: parsed.data.rawText,
     },
@@ -186,8 +200,8 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
     }
   }
 
-  const score = judge.data.score
-  const feedback = feedbackFor(score, judge.data)
+  const feedback = feedbackFor(judge.data)
+  const score = feedback.score
 
   // Read existing revision_count to decide whether to coach or force-advance.
   const [existingAnswer] = await db
@@ -223,29 +237,40 @@ export async function submitAnswer(input: unknown): Promise<SubmitResult> {
     forcedComplete = true
     nextRevisionCount = previousRevisions + 1
   } else {
-    // score <= 2, still under the iteration cap — run the coach.
+    // score <= 2, still under the iteration cap — run the coach with
+    // the failed criteria so it can ask exactly one targeted question
+    // per gap (binding back to criterion_key for the merge step).
     nextRevisionCount = previousRevisions + 1
     questionComplete = false
     isSoftWarned = false
-    const coach = await callCoach(
-      {
-        doc_type: section.docType,
-        section_title: sectionDef.title,
-        question_prompt: questionDef.prompt,
-        user_answer: parsed.data.rawText,
-        judge_score: score,
-        judge_strengths: judge.data.strengths,
-        judge_weaknesses: judge.data.weaknesses,
-        judge_suggestions: judge.data.suggestions,
-        revision_count: nextRevisionCount,
-      },
-      {
-        userId: user.id,
-        projectId: section.projectId,
-        documentInstanceId: parsed.data.documentId,
-      },
-    )
-    if (coach.ok) coachOutput = coach.data
+    const failed = failedCriteria(judge.data.criteria)
+    const failedWithDetails = failed.map((f) => {
+      const def = questionDef.criteria.find((c) => c.key === f.key)
+      return {
+        key: f.key,
+        label: def?.label ?? f.key,
+        hint: def?.hint ?? "",
+        why_not: f.why_not,
+      }
+    })
+    if (failedWithDetails.length > 0) {
+      const coach = await callCoach(
+        {
+          doc_type: section.docType,
+          section_title: sectionDef.title,
+          question_prompt: questionDef.prompt,
+          user_answer: parsed.data.rawText,
+          failed_criteria: failedWithDetails,
+          revision_count: nextRevisionCount,
+        },
+        {
+          userId: user.id,
+          projectId: section.projectId,
+          documentInstanceId: parsed.data.documentId,
+        },
+      )
+      if (coach.ok) coachOutput = coach.data
+    }
     // On coach failure (rate_limited / budget / error) we still write the
     // answer + judge feedback below; UI handles a null coach output.
   }
@@ -367,7 +392,12 @@ export async function mergeAnswer(
     {
       question_prompt: questionDef.prompt,
       original_draft: parsed.data.originalDraft,
-      qa_pairs: filledPairs,
+      qa_pairs: filledPairs.map((p) => ({
+        criterion_key: p.criterion_key,
+        criterion_label: p.criterion_label,
+        question: p.question,
+        answer: p.answer,
+      })),
     },
     {
       userId: user.id,

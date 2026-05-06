@@ -4,10 +4,14 @@ import { z } from "zod"
 
 export const judgeOutputSchema = z.object({
   score: z.number().int().min(1).max(5),
-  strengths: z.array(z.string().max(200)).max(5),
-  weaknesses: z.array(z.string().max(200)).max(5),
-  suggestions: z.array(z.string().max(200)).max(5),
-  one_line_verdict: z.string().max(140),
+  // Array caps used to be .max(5) but Haiku occasionally returns 6-8
+  // items and the strict cap was failing the entire judge call. The
+  // schema now accepts up to 20 of each; UI styling handles overflow.
+  // String length cap (200) is still enforced per item.
+  strengths: z.array(z.string().max(200)).max(20),
+  weaknesses: z.array(z.string().max(200)).max(20),
+  suggestions: z.array(z.string().max(200)).max(20),
+  one_line_verdict: z.string().max(280),
 })
 export type JudgeOutput = z.infer<typeof judgeOutputSchema>
 
@@ -24,7 +28,7 @@ export type JudgeInput = z.infer<typeof judgeInputSchema>
 /* ---------------- Coach ---------------- */
 
 export const coachOutputSchema = z.object({
-  targeted_questions: z.array(z.string().max(300)).min(2).max(4),
+  targeted_questions: z.array(z.string().max(500)).min(1).max(8),
   examples: z
     .array(
       z.object({
@@ -32,9 +36,9 @@ export const coachOutputSchema = z.object({
         answer: z.string().max(500),
       }),
     )
-    .min(2)
-    .max(3),
-  encouragement: z.string().max(200),
+    .min(1)
+    .max(6),
+  encouragement: z.string().max(400),
 })
 export type CoachOutput = z.infer<typeof coachOutputSchema>
 
@@ -82,9 +86,9 @@ const suggestionItemSchema = z.object({
 export type SuggestionItem = z.infer<typeof suggestionItemSchema>
 
 export const suggesterOutputSchema = z.object({
-  missing_features: z.array(suggestionItemSchema).max(7),
-  edge_cases: z.array(suggestionItemSchema).max(7),
-  risks: z.array(suggestionItemSchema).max(7),
+  missing_features: z.array(suggestionItemSchema).max(15),
+  edge_cases: z.array(suggestionItemSchema).max(15),
+  risks: z.array(suggestionItemSchema).max(15),
 })
 export type SuggestOutput = z.infer<typeof suggesterOutputSchema>
 
